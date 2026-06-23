@@ -17,6 +17,7 @@ function configureLocalEnvironment() {
   process.env.ADMIN_API_SECRET = process.env.ADMIN_API_SECRET || 'local-electron-session-only';
 
   const packagedEnvPath = path.join(userData, '.env');
+  process.env.LOCAL_KEYGEN_CONFIG_PATH = packagedEnvPath;
   if (fs.existsSync(packagedEnvPath)) {
     process.env.DOTENV_CONFIG_PATH = packagedEnvPath;
   }

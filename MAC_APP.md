@@ -50,6 +50,15 @@ APP_VERSION=1.0.0
 The app stores its local fulfillment database in the same Application Support
 folder.
 
+You can create/open that file by double-clicking:
+
+```text
+Linked Mac App Install/Configure Keygen.command
+```
+
+Railway environment variables configure the Railway backend only. They do not
+automatically configure this local Mac fulfillment app.
+
 ## Required Installer Files
 
 Put production installers in `installers/` before building:

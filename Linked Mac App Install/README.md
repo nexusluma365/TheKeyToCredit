@@ -23,6 +23,12 @@ For live development, double-click:
 Run Latest Dev App.command
 ```
 
+To configure this Mac's local Keygen credentials, double-click:
+
+```text
+Configure Keygen.command
+```
+
 For an updated packaged app, double-click:
 
 ```text
@@ -39,3 +45,6 @@ Credit Analyzer USB Key.app
 
 For a normal Mac install, use the DMG in `dist/`. That installed copy will not
 be linked to VSCode edits.
+
+Railway environment variables configure the Railway backend only. They do not
+automatically configure this local Mac fulfillment app.

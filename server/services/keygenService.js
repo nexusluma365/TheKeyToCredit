@@ -6,7 +6,10 @@ function assertConfigured() {
   const required = ['KEYGEN_ACCOUNT_ID', 'KEYGEN_PRODUCT_ID', 'KEYGEN_POLICY_ID', 'KEYGEN_API_TOKEN'];
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length) {
-    throw new Error(`Keygen is not configured. Missing env vars: ${missing.join(', ')}`);
+    const configPath = process.env.LOCAL_KEYGEN_CONFIG_PATH || '.env';
+    throw new Error(
+      `Keygen is not configured on this Mac. Add ${missing.join(', ')} to ${configPath}. Railway environment variables do not automatically configure this local fulfillment app.`
+    );
   }
 }
 

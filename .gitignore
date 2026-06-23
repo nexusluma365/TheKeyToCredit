@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+*.local
+
+# Installer binaries — too large for git, distributed separately
+installers/*.exe
+installers/*.dmg
+
+# Logs and local DB
+logs/*.log
+server/data/*.db
+server/data/*.db-journal
+server/data/*.db-wal
+server/data/*.db-shm
+
+.DS_Store

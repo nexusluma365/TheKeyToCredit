@@ -1,0 +1,1 @@
+../dist/mac/Credit Analyzer USB Key.app

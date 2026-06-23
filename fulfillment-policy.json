@@ -1,0 +1,59 @@
+{
+  "product": "Credit Report Analyzer Pro",
+  "usbFiles": [
+    "CreditAnalyzer-Windows.exe",
+    "CreditAnalyzer-Mac.dmg",
+    "license.json",
+    "START-HERE.pdf"
+  ],
+  "licenseJsonSchema": {
+    "licenseKey": "string",
+    "customerName": "string",
+    "customerEmail": "string",
+    "product": "Credit Report Analyzer Pro"
+  },
+  "customerAppUnlockRules": [
+    "USB is plugged in",
+    "USB contains license.json",
+    "license.json product matches Credit Report Analyzer Pro",
+    "license key validates through Railway and Keygen",
+    "license status is active",
+    "current computer is allowed by Keygen machine policy"
+  ],
+  "usbRemovedMessage": {
+    "title": "USB License Key Not Detected",
+    "body": "Please plug in your Credit Analyzer USB to continue."
+  },
+  "keygenPolicy": {
+    "maxMachines": 1,
+    "machineMatching": "Match All",
+    "allowedStatus": "Active",
+    "lockStatus": ["Expired", "Suspended"]
+  },
+  "railwayEndpoints": [
+    "/api/license/activate",
+    "/api/license/validate",
+    "/api/analyze-report",
+    "/api/generate-letter"
+  ],
+  "secretRules": [
+    "Never put OpenAI keys on the USB",
+    "Never put Claude keys on the USB",
+    "Never put Keygen admin keys on the USB",
+    "Never put Railway secrets on the USB",
+    "Only Railway should hold server-side API secrets"
+  ],
+  "publishingFlow": [
+    "Customer pays",
+    "Create or select customer in fulfillment app",
+    "Create license in Keygen",
+    "Create license.json",
+    "Copy installers and license file to USB",
+    "Ship USB",
+    "Customer installs app",
+    "Customer plugs in USB",
+    "App reads license",
+    "App validates with Railway and Keygen",
+    "App unlocks"
+  ]
+}

@@ -1,0 +1,58 @@
+const { app, BrowserWindow } = require('electron');
+const path = require('path');
+const fs = require('fs');
+
+function configureLocalEnvironment() {
+  const userData = app.getPath('userData');
+  const bundledInstallers = app.isPackaged
+    ? path.join(process.resourcesPath, 'installers')
+    : path.join(process.cwd(), 'installers');
+
+  process.env.LOCAL_APP_MODE = 'true';
+  process.env.SERVER_PORT = process.env.SERVER_PORT || '4001';
+  process.env.CLIENT_ORIGIN = 'file://';
+  process.env.DB_PATH = process.env.DB_PATH || path.join(userData, 'fulfillment.db');
+  process.env.LOGS_DIR = process.env.LOGS_DIR || path.join(userData, 'logs');
+  process.env.INSTALLERS_DIR = process.env.INSTALLERS_DIR || bundledInstallers;
+  process.env.ADMIN_API_SECRET = process.env.ADMIN_API_SECRET || 'local-electron-session-only';
+
+  const packagedEnvPath = path.join(userData, '.env');
+  if (fs.existsSync(packagedEnvPath)) {
+    process.env.DOTENV_CONFIG_PATH = packagedEnvPath;
+  }
+}
+
+async function startBackend() {
+  configureLocalEnvironment();
+  await import('../server/index.js');
+}
+
+function createWindow() {
+  const win = new BrowserWindow({
+    width: 1040,
+    height: 740,
+    minWidth: 940,
+    minHeight: 640,
+    title: 'Credit Analyzer USB Key',
+    backgroundColor: '#F6F7F9',
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+}
+
+app.whenReady().then(async () => {
+  await startBackend();
+  createWindow();
+
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+});
+
+app.on('window-all-closed', () => {
+  if (process.platform !== 'darwin') app.quit();
+});

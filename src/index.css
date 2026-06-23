@@ -1,0 +1,57 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html, body, #root {
+    height: 100%;
+  }
+
+  body {
+    @apply font-sans text-ink antialiased;
+    background: linear-gradient(135deg, #EEF1FB 0%, #F7F4FF 45%, #EFF7FB 100%);
+    min-height: 100vh;
+  }
+
+  ::selection {
+    background: #4F5BFF33;
+  }
+}
+
+@layer components {
+  .pill-primary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-ink px-5 py-2.5 text-sm font-medium text-white
+      transition-all duration-150 hover:bg-black hover:shadow-soft active:scale-[0.98]
+      disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-ink;
+  }
+
+  .pill-secondary {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-white px-5 py-2.5 text-sm font-medium text-ink
+      border border-black/[0.08] transition-all duration-150 hover:shadow-soft active:scale-[0.98]
+      disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .pill-danger {
+    @apply inline-flex items-center justify-center gap-2 rounded-full bg-danger px-5 py-2.5 text-sm font-medium text-white
+      transition-all duration-150 hover:bg-[#B73838] active:scale-[0.98]
+      disabled:opacity-40 disabled:cursor-not-allowed;
+  }
+
+  .card {
+    @apply rounded-3xl bg-white/90 backdrop-blur-sm shadow-card border border-black/[0.04] p-6;
+  }
+
+  .field-label {
+    @apply text-xs font-medium text-mist mb-1.5 block;
+  }
+
+  .field-input {
+    @apply w-full rounded-2xl border border-black/[0.08] bg-white px-4 py-2.5 text-sm text-ink
+      placeholder:text-black/30 focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent/40
+      transition-all duration-150;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium;
+  }
+}

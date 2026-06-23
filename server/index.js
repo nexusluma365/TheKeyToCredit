@@ -9,7 +9,7 @@ import usbRoutes from './routes/usbRoutes.js';
 import bulkRoutes from './routes/bulkRoutes.js';
 
 const app = express();
-const PORT = process.env.SERVER_PORT || 4001;
+const PORT = process.env.PORT || process.env.SERVER_PORT || 4001;
 
 app.use(
   cors({

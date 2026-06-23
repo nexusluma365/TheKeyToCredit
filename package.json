@@ -5,7 +5,11 @@
   "description": "Internal USB fulfillment tool for Credit Analyzer license + USB preparation",
   "type": "module",
   "main": "electron/main.cjs",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
+    "start": "node server/index.js",
     "usb:dev": "concurrently -n SERVER,CLIENT -c yellow,cyan \"npm run server:dev\" \"npm run client:dev\"",
     "server:dev": "node --watch server/index.js",
     "client:dev": "vite",

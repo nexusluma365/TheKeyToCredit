@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   CheckCircle2,
   CircleDashed,
@@ -6,6 +6,7 @@ import {
   KeyRound,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   Trash2,
   Usb,
@@ -54,8 +55,8 @@ function buildFulfillmentStages(formatFirst) {
     },
     {
       at: formatFirst ? 16000 : 6500,
-      title: 'Writing content to USB',
-      detail: 'Copying the Mac and Windows installers, license key, and START-HERE.txt.',
+      title: 'Writing to USB',
+      detail: 'Copying installers and writing the license key.',
     },
     {
       at: formatFirst ? 23000 : 12000,
@@ -91,6 +92,24 @@ export default function MacFulfillmentApp() {
   const [workView, setWorkView] = useState(null);
   const [configWarning, setConfigWarning] = useState(null);
   const [usbSafetyAlert, setUsbSafetyAlert] = useState(null);
+  const [alertLeaving, setAlertLeaving] = useState(false);
+  const [midWriteDisconnect, setMidWriteDisconnect] = useState(false);
+
+  const alertDismissTimerRef = useRef(null);
+  const usbSafetyAlertRef = useRef(null);
+
+  useEffect(() => {
+    usbSafetyAlertRef.current = usbSafetyAlert;
+  }, [usbSafetyAlert]);
+
+  const dismissUsbAlert = useCallback(() => {
+    if (alertDismissTimerRef.current) clearTimeout(alertDismissTimerRef.current);
+    setAlertLeaving(true);
+    alertDismissTimerRef.current = setTimeout(() => {
+      setAlertLeaving(false);
+      setUsbSafetyAlert(null);
+    }, 260);
+  }, []);
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.customerId === selectedId) || null,
@@ -170,6 +189,15 @@ export default function MacFulfillmentApp() {
     return () => clearInterval(id);
   }, [busy, loadDrives]);
 
+  // Auto-dismiss alert when USB is detected again (works while busy or idle).
+  useEffect(() => {
+    if (!usbSafetyAlert || alertLeaving) return;
+    const hasReadyDrive = drives.some((d) => d.isReady && d.mountPath);
+    if (!hasReadyDrive) return;
+    dismissUsbAlert();
+    if (!busy) setError(null);
+  }, [drives, usbSafetyAlert, alertLeaving, busy, dismissUsbAlert]);
+
   useEffect(() => {
     if (!busy || !workStartedAt || progress.length === 0) return undefined;
 
@@ -204,7 +232,7 @@ export default function MacFulfillmentApp() {
         ));
 
         if (stillVisible) {
-          if (usbSafetyAlert?.type === 'diagnosing') setUsbSafetyAlert(null);
+          if (usbSafetyAlertRef.current?.type === 'diagnosing') dismissUsbAlert();
           return;
         }
 
@@ -229,30 +257,29 @@ export default function MacFulfillmentApp() {
         }
 
         setStatus('USB disconnected');
+        setMidWriteDisconnect(true);
         setUsbSafetyAlert({
           type: 'disconnected',
-          message: 'USB has been disconnected. Reconnect the USB and try again.',
+          message: 'USB disconnected mid-write. Reconnect the USB to retry.',
         });
-        setError('USB has been disconnected. Reconnect the USB and try again.');
       } catch {
         setStatus('USB disconnected');
+        setMidWriteDisconnect(true);
         setUsbSafetyAlert({
           type: 'disconnected',
-          message: 'USB has been disconnected. Reconnect the USB and try again.',
+          message: 'USB disconnected mid-write. Reconnect the USB to retry.',
         });
-        setError('USB has been disconnected. Reconnect the USB and try again.');
       }
     }, 1500);
 
     return () => clearInterval(id);
-  }, [busy, formatFirst, targetDrive?.mountPath, usbSafetyAlert?.type, workStartedAt]);
+  }, [busy, dismissUsbAlert, formatFirst, targetDrive?.mountPath, workStartedAt]);
 
   async function handleCreateCustomer(event) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     setResult(null);
-    setUsbSafetyAlert(null);
     setStatus('Saving customer');
 
     try {
@@ -275,6 +302,13 @@ export default function MacFulfillmentApp() {
     setBusy(true);
     setError(null);
     setResult(null);
+    setMidWriteDisconnect(false);
+
+    // Clear any lingering alert cleanly before starting.
+    if (alertDismissTimerRef.current) clearTimeout(alertDismissTimerRef.current);
+    setAlertLeaving(false);
+    setUsbSafetyAlert(null);
+
     const fulfillmentStages = buildFulfillmentStages(formatFirst);
     const startedAt = Date.now();
     setProgress(fulfillmentStages);
@@ -291,10 +325,11 @@ export default function MacFulfillmentApp() {
         confirmationText: formatFirst ? formatConfirm : undefined,
       });
       setResult(fulfilled);
+      setMidWriteDisconnect(false);
       setStatus(fulfilled.readyToShip ? 'USB key ready' : 'USB written, verify warnings');
       setWorkView({
-        title: 'Great, USB is ready',
-        detail: 'Formatting and writing completed successfully.',
+        title: 'USB is ready',
+        detail: 'All files written and verified successfully.',
         activeIndex: fulfillmentStages.length,
         elapsed: Date.now() - startedAt,
       });
@@ -302,11 +337,11 @@ export default function MacFulfillmentApp() {
       await load();
     } catch (err) {
       if (err.usbDisconnected) {
+        setMidWriteDisconnect(true);
         setUsbSafetyAlert({
           type: 'disconnected',
-          message: 'USB has been disconnected. Reconnect the USB and try again.',
+          message: 'USB disconnected mid-write. Reconnect the USB to retry.',
         });
-        setError('USB has been disconnected. Reconnect the USB and try again.');
         setStatus('USB disconnected');
       } else {
         setError(err.message);
@@ -317,6 +352,12 @@ export default function MacFulfillmentApp() {
       setBusy(false);
       setWorkStartedAt(null);
     }
+  }
+
+  function handleRetry() {
+    setMidWriteDisconnect(false);
+    setError(null);
+    handleFulfill();
   }
 
   async function handleDeleteCustomer(customer) {
@@ -354,6 +395,8 @@ export default function MacFulfillmentApp() {
     : connectedDrives.length > 1
       ? 'Multiple USB drives detected'
       : 'USB not connected';
+
+  const showRetryBanner = midWriteDisconnect && !busy && !usbSafetyAlert && !alertLeaving;
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#EAF7FA] text-[#101723]">
@@ -413,7 +456,7 @@ export default function MacFulfillmentApp() {
               className="mt-9 inline-flex h-14 min-w-[270px] items-center justify-center gap-3 rounded-full bg-[#2563EB] px-8 text-base font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.32),inset_0_-2px_0_rgba(0,0,0,0.16)] transition hover:bg-[#1D4ED8] active:translate-y-px disabled:cursor-not-allowed disabled:bg-[#9BA7BA] disabled:shadow-none"
             >
               {busy ? <span className="h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_0_6px_rgba(255,255,255,0.18)]" /> : <KeyRound className="h-5 w-5" />}
-              {busy ? 'Preparing USB Key' : formatFirst ? 'Format, Generate And Write USB' : 'Generate License And Write USB'}
+              {busy ? 'Preparing USB Key…' : formatFirst ? 'Format, Generate And Write USB' : 'Generate License And Write USB'}
             </button>
 
             {busy && workView && (
@@ -423,10 +466,10 @@ export default function MacFulfillmentApp() {
                     <div className="loader" />
                   </div>
                   <div className="min-w-0">
-                    <div className="working-copy text-xl font-bold leading-tight tracking-normal">
+                    <div className="text-xl font-bold leading-tight tracking-normal">
                       {workView.title}
                     </div>
-                    <div className="mt-1 text-sm font-semibold leading-6 text-white/72">
+                    <div className="mt-1 text-sm font-medium leading-6 text-white/90">
                       {workView.detail}
                     </div>
                   </div>
@@ -445,12 +488,50 @@ export default function MacFulfillmentApp() {
             )}
 
             {usbSafetyAlert && (
-              <div className={`mt-5 w-full max-w-xl rounded-[22px] border px-5 py-4 text-left text-sm font-semibold shadow-[0_12px_34px_rgba(15,23,42,0.1)] ${
+              <div className={`mt-5 w-full max-w-xl rounded-[22px] border px-5 py-4 text-left text-sm shadow-[0_12px_34px_rgba(15,23,42,0.1)] ${
+                alertLeaving ? 'usb-alert-leave' : 'usb-alert-enter'
+              } ${
                 usbSafetyAlert.type === 'disconnected'
-                  ? 'border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]'
-                  : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'
+                  ? 'border-[#FCA5A5] bg-[#FEF2F2]'
+                  : 'border-[#BFDBFE] bg-[#EFF6FF]'
               }`}>
-                {usbSafetyAlert.message}
+                <div className="flex items-start justify-between gap-3">
+                  <span className={`font-semibold ${usbSafetyAlert.type === 'disconnected' ? 'text-[#B91C1C]' : 'text-[#1D4ED8]'}`}>
+                    {usbSafetyAlert.message}
+                  </span>
+                  <button
+                    onClick={dismissUsbAlert}
+                    className={`shrink-0 text-lg leading-none transition-opacity hover:opacity-100 ${
+                      usbSafetyAlert.type === 'disconnected' ? 'text-[#B91C1C]/50' : 'text-[#1D4ED8]/50'
+                    }`}
+                    aria-label="Dismiss"
+                  >
+                    ×
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {showRetryBanner && (
+              <div className="mt-5 w-full max-w-xl rounded-[22px] border border-[#F59E0B]/30 bg-[#FFFBEB] px-5 py-4 text-left shadow-[0_12px_34px_rgba(15,23,42,0.08)]">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-[#92400E]">
+                    Write interrupted by USB disconnect.
+                  </div>
+                  <button
+                    onClick={handleRetry}
+                    disabled={!targetDrive || !selectedCustomer || (formatFirst && formatConfirm !== 'FORMAT')}
+                    className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-[#F59E0B] px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-[#D97706] disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <RotateCcw className="h-3 w-3" />
+                    Retry
+                  </button>
+                </div>
+                {(!targetDrive || (formatFirst && formatConfirm !== 'FORMAT')) && (
+                  <div className="mt-2 text-xs text-[#B45309]">
+                    {!targetDrive ? 'Reconnect the USB drive to retry.' : 'Re-enter FORMAT below to retry.'}
+                  </div>
+                )}
               </div>
             )}
           </section>
@@ -661,14 +742,14 @@ export default function MacFulfillmentApp() {
                 </div>
 
                 {busy && workView && (
-                  <div className="rounded-[22px] border border-[#2563EB]/15 bg-[#EFF6FF] p-5 text-sm text-[#1D4ED8]">
+                  <div className="rounded-[22px] border border-[#2563EB]/15 bg-[#EFF6FF] p-5 text-sm">
                     <div className="flex items-center gap-3">
                       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2563EB]">
                         <div className="loader scale-75" />
                       </div>
                       <div className="min-w-0">
                         <div className="working-copy text-base font-bold text-[#1E3A8A]">{workView.title}</div>
-                        <div className="mt-1 text-xs font-semibold leading-5 text-[#4264A8]">{workView.detail}</div>
+                        <div className="mt-1 text-xs font-medium leading-5 text-[#1E3A8A]/70">{workView.detail}</div>
                       </div>
                     </div>
                   </div>

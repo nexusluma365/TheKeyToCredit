@@ -11,7 +11,7 @@ the customer-facing Credit Analyzer application.
 1. Enter or import customer information.
 2. Generate a unique Keygen license for that customer.
 3. Detect a connected USB drive.
-4. Format it (exFAT, labeled `CREDIT_ANALYZER`).
+4. Format it (exFAT, labeled `CREDITKEY`).
 5. Copy the production installers onto it.
 6. Write the customer's license to `license.json`.
 7. Generate a `START-HERE.pdf` that tells the customer what's on the drive.

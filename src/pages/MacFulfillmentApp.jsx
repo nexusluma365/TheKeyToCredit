@@ -126,7 +126,7 @@ export default function MacFulfillmentApp() {
     setError(null);
     setResult(null);
     setProgress([
-      formatFirst ? 'Formatting USB as CREDIT_ANALYZER' : 'Using existing USB format',
+      formatFirst ? 'Formatting USB as CREDITKEY' : 'Using existing USB format',
       'Generating Keygen license',
       'Copying installers',
       'Writing license.json and START-HERE.pdf',
@@ -421,7 +421,7 @@ export default function MacFulfillmentApp() {
                     <span>
                       Format USB before writing
                       <span className="mt-1 block text-xs font-normal leading-5 text-[#6B7280]">
-                        Recommended. This erases the selected USB, labels it CREDIT_ANALYZER, then writes only the required files.
+                        Recommended. This erases the selected USB, labels it CREDITKEY, then writes only the required files.
                       </span>
                     </span>
                   </label>

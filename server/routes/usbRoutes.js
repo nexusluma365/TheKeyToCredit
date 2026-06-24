@@ -4,7 +4,7 @@ import path from 'path';
 import { db } from '../db.js';
 import { requireAdminAuth } from '../middleware/auth.js';
 import { listRemovableDrives } from '../services/usbDetectionService.js';
-import { formatDrive } from '../services/usbFormatService.js';
+import { formatDrive, VOLUME_LABEL } from '../services/usbFormatService.js';
 import {
   copyInstallers,
   writeLicenseJson,
@@ -48,7 +48,7 @@ async function waitForFormattedDrive(previousDrive) {
     const drives = await listRemovableDrives();
     const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
     const formatted = readyDrives.find((drive) => drive.devicePath === previousDrive.devicePath)
-      || readyDrives.find((drive) => drive.mountPath?.includes('CREDIT_ANALYZER'))
+      || readyDrives.find((drive) => drive.mountPath?.includes(VOLUME_LABEL))
       || (readyDrives.length === 1 ? readyDrives[0] : null);
 
     if (formatted) return formatted;

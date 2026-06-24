@@ -5,7 +5,7 @@ import os from 'os';
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 
-const VOLUME_LABEL = 'CREDIT_ANALYZER';
+export const VOLUME_LABEL = 'CREDITKEY';
 
 /**
  * Formats the target drive as exFAT with the standard volume label.
@@ -38,21 +38,29 @@ export async function formatDrive({ devicePath, mountPath, confirmationText }) {
 }
 
 async function formatOnMac(devicePath) {
-  if (!devicePath || !/^\/dev\/disk\d+$/i.test(devicePath)) {
+  const wholeDiskPath = normalizeMacDiskPath(devicePath);
+  if (!wholeDiskPath) {
     throw new Error('A valid removable disk device path is required for formatting.');
   }
 
   try {
+    await execFileAsync('diskutil', ['unmountDisk', 'force', wholeDiskPath]).catch(() => null);
+
     // diskutil eraseDisk <format> <name> <partitionScheme> <device>
-    const { stdout } = await execFileAsync('diskutil', ['eraseDisk', 'ExFAT', VOLUME_LABEL, 'MBRFormat', devicePath]);
-    return { automated: true, output: stdout, label: VOLUME_LABEL };
+    const { stdout } = await execFileAsync('diskutil', ['eraseDisk', 'ExFAT', VOLUME_LABEL, 'MBRFormat', wholeDiskPath]);
+    return { automated: true, output: stdout, label: VOLUME_LABEL, devicePath: wholeDiskPath };
   } catch (err) {
     return {
       automated: false,
       error: err.message,
-      manualInstructions: manualInstructionsFor('darwin', devicePath),
+      manualInstructions: manualInstructionsFor('darwin', wholeDiskPath),
     };
   }
+}
+
+function normalizeMacDiskPath(devicePath) {
+  if (!devicePath || !/^\/dev\/disk\d+(s\d+)?$/i.test(devicePath)) return null;
+  return devicePath.replace(/s\d+$/i, '');
 }
 
 async function formatOnWindows(mountPath) {

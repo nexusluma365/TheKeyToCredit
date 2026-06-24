@@ -1,9 +1,21 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const dotenv = require('dotenv');
+
+function findProjectEnv() {
+  const candidates = [
+    path.join(process.cwd(), '.env'),
+    path.join(__dirname, '..', '.env'),
+    path.join(process.resourcesPath || '', '..', '..', '..', '..', '..', '.env'),
+  ];
+
+  return candidates.find((candidate) => candidate && fs.existsSync(candidate));
+}
 
 function configureLocalEnvironment() {
   const userData = app.getPath('userData');
+  const homeConfigPath = path.join(app.getPath('home'), 'Library', 'Application Support', 'Credit Analyzer USB Key', '.env');
   const bundledInstallers = app.isPackaged
     ? path.join(process.resourcesPath, 'installers')
     : path.join(process.cwd(), 'installers');
@@ -17,9 +29,12 @@ function configureLocalEnvironment() {
   process.env.ADMIN_API_SECRET = process.env.ADMIN_API_SECRET || 'local-electron-session-only';
 
   const packagedEnvPath = path.join(userData, '.env');
-  process.env.LOCAL_KEYGEN_CONFIG_PATH = packagedEnvPath;
-  if (fs.existsSync(packagedEnvPath)) {
-    process.env.DOTENV_CONFIG_PATH = packagedEnvPath;
+  const envPath = [homeConfigPath, packagedEnvPath, findProjectEnv()].find((candidate) => candidate && fs.existsSync(candidate));
+  process.env.LOCAL_KEYGEN_CONFIG_PATH = envPath || packagedEnvPath;
+
+  if (envPath) {
+    process.env.DOTENV_CONFIG_PATH = envPath;
+    dotenv.config({ path: envPath, override: true });
   }
 }
 

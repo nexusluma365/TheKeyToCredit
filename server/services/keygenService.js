@@ -8,7 +8,7 @@ function assertConfigured() {
   if (missing.length) {
     const configPath = process.env.LOCAL_KEYGEN_CONFIG_PATH || '.env';
     throw new Error(
-      `Keygen is not configured on this Mac. Add ${missing.join(', ')} to ${configPath}. Railway environment variables do not automatically configure this local fulfillment app.`
+      `Keygen is not configured on this Mac. Missing: ${missing.join(', ')}. Checked config: ${configPath}. Railway environment variables do not automatically configure this local fulfillment app.`
     );
   }
 }

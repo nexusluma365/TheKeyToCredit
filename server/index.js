@@ -20,6 +20,19 @@ app.use(express.json());
 
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
+// Config health check — lets the frontend show a clear setup warning
+// instead of a cryptic error when Keygen credentials are missing.
+app.get('/admin/config-status', (req, res) => {
+  const required = ['KEYGEN_ACCOUNT_ID', 'KEYGEN_POLICY_ID', 'KEYGEN_API_TOKEN'];
+  const missing = required.filter((key) => !process.env[key]);
+  const configured = missing.length === 0;
+  res.json({
+    configured,
+    missing,
+    configPath: process.env.LOCAL_KEYGEN_CONFIG_PATH || null,
+  });
+});
+
 app.use('/admin/auth', authRoutes);
 app.use('/admin', customerRoutes);
 app.use('/admin', usbRoutes);

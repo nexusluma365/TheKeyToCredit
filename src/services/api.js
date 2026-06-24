@@ -69,6 +69,8 @@ export const api = {
     formData.append('file', file);
     return request('/admin/bulk/import', { method: 'POST', body: formData });
   },
+
+  configStatus: () => request('/admin/config-status'),
 };
 
 export { getToken };

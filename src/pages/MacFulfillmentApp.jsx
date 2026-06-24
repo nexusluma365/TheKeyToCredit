@@ -32,6 +32,7 @@ export default function MacFulfillmentApp() {
   const [formatConfirm, setFormatConfirm] = useState('');
   const [lastUsbCheck, setLastUsbCheck] = useState(null);
   const [progress, setProgress] = useState([]);
+  const [configWarning, setConfigWarning] = useState(null);
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.customerId === selectedId) || null,
@@ -73,12 +74,20 @@ export default function MacFulfillmentApp() {
     setLoading(true);
     setError(null);
     try {
-      const customerData = await api.getCustomers();
+      const [customerData, configData] = await Promise.all([
+        api.getCustomers(),
+        api.configStatus().catch(() => null),
+      ]);
       const nextCustomers = customerData.customers || [];
       setCustomers(nextCustomers);
       await loadDrives({ quiet: true });
       setStatus('Ready');
       if (!selectedId && nextCustomers[0]) setSelectedId(nextCustomers[0].customerId);
+      if (configData && !configData.configured) {
+        setConfigWarning({ missing: configData.missing, configPath: configData.configPath });
+      } else {
+        setConfigWarning(null);
+      }
     } catch (err) {
       setError(err.message);
       setStatus('Needs attention');
@@ -217,6 +226,18 @@ export default function MacFulfillmentApp() {
               </button>
             </div>
           </header>
+
+          {configWarning && (
+            <div className="mx-7 mb-2 rounded-2xl border border-[#F59E0B]/30 bg-[#FFFBEB] px-5 py-4 text-sm text-[#92400E]">
+              <div className="font-semibold">Keygen not configured — license creation will fail.</div>
+              <div className="mt-1 text-xs leading-5">
+                Missing: <span className="font-mono">{configWarning.missing.join(', ')}</span>
+                {configWarning.configPath && (
+                  <> · Edit <span className="font-mono break-all">{configWarning.configPath}</span> then restart the app.</>
+                )}
+              </div>
+            </div>
+          )}
 
           <section className="flex min-h-[330px] flex-col items-center justify-center px-6 pb-12 pt-9 text-center">
             <h1 className="max-w-3xl text-[58px] font-medium leading-[0.98] tracking-normal text-[#080E18]">

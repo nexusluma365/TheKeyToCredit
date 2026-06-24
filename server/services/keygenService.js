@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 const KEYGEN_API_BASE = 'https://api.keygen.sh/v1';
 
 function assertConfigured() {
-  const required = ['KEYGEN_ACCOUNT_ID', 'KEYGEN_PRODUCT_ID', 'KEYGEN_POLICY_ID', 'KEYGEN_API_TOKEN'];
+  const required = ['KEYGEN_ACCOUNT_ID', 'KEYGEN_POLICY_ID', 'KEYGEN_API_TOKEN'];
   const missing = required.filter((key) => !process.env[key]);
   if (missing.length) {
     const configPath = process.env.LOCAL_KEYGEN_CONFIG_PATH || '.env';
@@ -57,7 +57,6 @@ export async function createLicenseForCustomer(customer) {
         },
         relationships: {
           policy: { data: { type: 'policies', id: process.env.KEYGEN_POLICY_ID } },
-          product: { data: { type: 'products', id: process.env.KEYGEN_PRODUCT_ID } },
         },
       },
     }),

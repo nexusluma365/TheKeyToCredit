@@ -1,7 +1,34 @@
 const { app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 const dotenv = require('dotenv');
+
+function appendStartupLog(message, detail) {
+  try {
+    const logDir = path.join(os.homedir(), 'Library', 'Application Support', 'Credit Analyzer USB Key', 'logs');
+    fs.mkdirSync(logDir, { recursive: true });
+    const line = [
+      new Date().toISOString(),
+      message,
+      detail ? JSON.stringify(detail) : '',
+    ].filter(Boolean).join(' ');
+    fs.appendFileSync(path.join(logDir, 'electron-main.log'), `${line}\n`);
+  } catch {
+    // Logging must never prevent app startup.
+  }
+}
+
+process.on('uncaughtException', (error) => {
+  appendStartupLog('uncaughtException', { message: error.message, stack: error.stack });
+});
+
+process.on('unhandledRejection', (error) => {
+  appendStartupLog('unhandledRejection', {
+    message: error?.message || String(error),
+    stack: error?.stack,
+  });
+});
 
 function findProjectEnv() {
   const candidates = [
@@ -39,11 +66,14 @@ function configureLocalEnvironment() {
 }
 
 async function startBackend() {
+  appendStartupLog('starting backend', { packaged: app.isPackaged, resourcesPath: process.resourcesPath });
   configureLocalEnvironment();
   await import('../server/index.js');
+  appendStartupLog('backend started', { port: process.env.SERVER_PORT });
 }
 
 function createWindow() {
+  appendStartupLog('creating window');
   const win = new BrowserWindow({
     width: 1040,
     height: 740,
@@ -58,11 +88,18 @@ function createWindow() {
   });
 
   win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  appendStartupLog('window file loaded');
 }
 
 app.whenReady().then(async () => {
-  await startBackend();
-  createWindow();
+  try {
+    appendStartupLog('app ready');
+    await startBackend();
+    createWindow();
+  } catch (error) {
+    appendStartupLog('startup failed', { message: error.message, stack: error.stack });
+    app.quit();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

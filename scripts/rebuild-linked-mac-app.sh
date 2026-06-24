@@ -16,6 +16,8 @@ env -u ELECTRON_RUN_AS_NODE npx electron-builder --mac dir
 APP_LINK="/Applications/Credit Analyzer USB Key.app"
 APP_TARGET="$ROOT_DIR/dist/mac/Credit Analyzer USB Key.app"
 
+codesign --force --deep --sign - "$APP_TARGET"
+
 if [ ! -L "$APP_LINK" ]; then
   echo "Creating /Applications linked app..."
   ln -s "$APP_TARGET" "$APP_LINK"

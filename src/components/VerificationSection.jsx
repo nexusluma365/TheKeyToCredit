@@ -5,11 +5,11 @@ import StatusPill from './StatusPill';
 import { api } from '../services/api';
 
 const CHECK_LABELS = {
-  windowsInstallerExists: 'CreditAnalyzer-Windows.exe',
-  macInstallerExists: 'CreditAnalyzer-Mac.dmg',
-  startHerePdfExists: 'START-HERE.pdf',
-  licenseJsonExists: 'license.json present',
-  licenseJsonValid: 'license.json contains valid data',
+  windowsInstallerExists: 'CreditAnalyzer Setup.exe',
+  macInstallerExists: 'CreditAnalyzer.dmg',
+  startHereTxtExists: 'START-HERE.txt',
+  licenseDatExists: '.credit-key/license.dat present',
+  licenseDatValid: '.credit-key/license.dat contains valid key',
   structureCorrect: 'USB structure is correct',
 };
 

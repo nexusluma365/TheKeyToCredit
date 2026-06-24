@@ -55,7 +55,7 @@ function buildFulfillmentStages(formatFirst) {
     {
       at: formatFirst ? 16000 : 6500,
       title: 'Writing content to USB',
-      detail: 'Copying the Mac and Windows installers, license.json, and START-HERE.pdf.',
+      detail: 'Copying the Mac and Windows installers, license key, and START-HERE.txt.',
     },
     {
       at: formatFirst ? 23000 : 12000,
@@ -507,7 +507,7 @@ export default function MacFulfillmentApp() {
                 </form>
 
                 <div className="mt-auto border-t border-black/10 pt-6 text-xs leading-5 text-[#6B7280]">
-                  The USB stores the customer license in <span className="font-mono text-[#111827]">license.json</span>.
+                  The USB stores the customer license in <span className="font-mono text-[#111827]">.credit-key/license.dat</span>.
                 </div>
               </div>
 

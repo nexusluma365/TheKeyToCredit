@@ -140,7 +140,7 @@ export default function UsbPreparationSection({ disabled, customer, license, dri
             <CheckCircle2 className="w-4 h-4" /> Installers copied ({prepareResult.copiedInstallers?.length || 0} files)
           </div>
           <div className="flex items-center gap-1.5 text-success">
-            <CheckCircle2 className="w-4 h-4" /> License written to license.json
+            <CheckCircle2 className="w-4 h-4" /> License written to .credit-key/license.dat
           </div>
         </div>
       )}

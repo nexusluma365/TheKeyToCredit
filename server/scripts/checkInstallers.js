@@ -3,17 +3,21 @@ import path from 'path';
 import 'dotenv/config';
 
 const installersDir = process.env.INSTALLERS_DIR || path.join(process.cwd(), 'installers');
-const required = ['CreditAnalyzer-Windows.exe', 'CreditAnalyzer-Mac.dmg'];
+
+// Each entry lists accepted filenames for that installer slot (first match wins).
+const required = [
+  { label: 'Windows installer', candidates: ['CreditAnalyzer Setup.exe', 'CreditAnalyzer-Windows.exe'] },
+  { label: 'Mac installer',     candidates: ['CreditAnalyzer.dmg', 'CreditAnalyzer-Mac.dmg'] },
+];
 
 console.log(`Checking installer repository: ${installersDir}\n`);
 
 let allPresent = true;
 
-for (const file of required) {
-  const filePath = path.join(installersDir, file);
-  const exists = fs.existsSync(filePath);
-  console.log(`${exists ? '✔' : '✘'} ${file}`);
-  if (!exists) allPresent = false;
+for (const { label, candidates } of required) {
+  const found = candidates.find((f) => fs.existsSync(path.join(installersDir, f)));
+  console.log(`${found ? '✔' : '✘'} ${label}${found ? ` (${found})` : ` — checked: ${candidates.join(', ')}`}`);
+  if (!found) allPresent = false;
 }
 
 if (!allPresent) {

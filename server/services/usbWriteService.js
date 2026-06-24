@@ -1,11 +1,17 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import os from 'os';
+
+const execFileAsync = promisify(execFile);
 
 export const USB_FILES = {
-  windowsInstaller: 'CreditAnalyzer-Windows.exe',
-  macInstaller: 'CreditAnalyzer-Mac.dmg',
-  license: 'license.json',
-  startHere: 'START-HERE.pdf',
+  windowsInstaller: 'CreditAnalyzer Setup.exe',
+  macInstaller: 'CreditAnalyzer.dmg',
+  licenseDir: '.credit-key',
+  license: '.credit-key/license.dat',
+  startHere: 'START-HERE.txt',
 };
 
 export const PRODUCT_NAME = 'Credit Report Analyzer Pro';
@@ -15,7 +21,7 @@ const INSTALLER_SOURCES = [
     destination: USB_FILES.windowsInstaller,
     candidates: [
       USB_FILES.windowsInstaller,
-      'CreditAnalyzer Setup.exe',
+      'CreditAnalyzer-Windows.exe',
       'Credit Report Analyzer Pro Setup 0.1.0.exe',
     ],
   },
@@ -23,7 +29,7 @@ const INSTALLER_SOURCES = [
     destination: USB_FILES.macInstaller,
     candidates: [
       USB_FILES.macInstaller,
-      'CreditAnalyzer.dmg',
+      'CreditAnalyzer-Mac.dmg',
       'Credit Report Analyzer Pro-0.1.0.dmg',
     ],
   },
@@ -107,30 +113,33 @@ export async function copyInstallers(installersDir, usbMountPath) {
 }
 
 /**
- * Writes the customer license payload read by the customer-facing app.
- * The full license key is intentionally present on the USB, but Keygen
- * remains the source of truth for activation, machine limits, and status.
+ * Writes the customer license key into .credit-key/license.dat on the USB.
+ * The folder is hidden on macOS so it doesn't clutter the customer's view.
+ * The customer-facing app reads this file first when scanning the USB.
  */
-export async function writeLicenseJson(usbMountPath, customer, fullLicenseKey) {
+export async function writeLicenseJson(usbMountPath, _customer, fullLicenseKey) {
   await assertUsbWritable(usbMountPath);
+  assertNotForbidden(USB_FILES.licenseDir);
   assertNotForbidden(USB_FILES.license);
-  const payload = {
-    licenseKey: fullLicenseKey,
-    customerName: `${customer.first_name} ${customer.last_name}`,
-    customerEmail: customer.email,
-    product: PRODUCT_NAME,
-  };
+
+  const dirPath = path.join(usbMountPath, USB_FILES.licenseDir);
+  await fs.mkdir(dirPath, { recursive: true });
 
   const filePath = path.join(usbMountPath, USB_FILES.license);
-  await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await fs.writeFile(filePath, fullLicenseKey, 'utf-8');
+
+  if (os.platform() === 'darwin') {
+    await execFileAsync('chflags', ['hidden', dirPath]).catch(() => null);
+  }
+
   await assertUsbWritable(usbMountPath);
   return filePath;
 }
 
 /**
- * Generates a small customer-facing PDF.
+ * Writes a plain-text START-HERE.txt for the customer.
  */
-export async function writeStartHerePdf(usbMountPath) {
+export async function writeStartHereTxt(usbMountPath) {
   await assertUsbWritable(usbMountPath);
   assertNotForbidden(USB_FILES.startHere);
 
@@ -140,59 +149,17 @@ export async function writeStartHerePdf(usbMountPath) {
     '1. Keep this USB plugged in while using the app.',
     `2. Windows installer: ${USB_FILES.windowsInstaller}`,
     `3. Mac installer: ${USB_FILES.macInstaller}`,
-    `4. The license is stored in ${USB_FILES.license}.`,
+    '4. The license key is stored in .credit-key/license.dat.',
     '5. The app validates this USB license through the secure backend.',
     '6. Keygen controls active, expired, suspended, and machine access.',
     '7. If the USB is removed, plug it back in to continue.',
-    '8. Do not delete, rename, or edit license.json.',
+    '8. Do not delete, rename, or edit files in the .credit-key folder.',
     '',
     'Need help? Contact support with your order information.',
   ];
 
   const filePath = path.join(usbMountPath, USB_FILES.startHere);
-  await fs.writeFile(filePath, createSimplePdf(lines));
+  await fs.writeFile(filePath, lines.join('\n'), 'utf-8');
   await assertUsbWritable(usbMountPath);
   return filePath;
-}
-
-function escapePdfText(value) {
-  return value.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
-}
-
-function createSimplePdf(lines) {
-  const content = [
-    'BT',
-    '/F1 20 Tf',
-    '72 720 Td',
-    ...lines.flatMap((line, index) => {
-      const font = index === 0 ? ['/F1 20 Tf'] : index === 1 ? ['/F1 12 Tf'] : [];
-      return [...font, `(${escapePdfText(line)}) Tj`, '0 -28 Td'];
-    }),
-    'ET',
-  ].join('\n');
-
-  const objects = [
-    '<< /Type /Catalog /Pages 2 0 R >>',
-    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
-    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
-    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
-    `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`,
-  ];
-
-  let pdf = '%PDF-1.4\n';
-  const offsets = [0];
-  objects.forEach((object, index) => {
-    offsets.push(Buffer.byteLength(pdf));
-    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-
-  const xrefOffset = Buffer.byteLength(pdf);
-  pdf += `xref\n0 ${objects.length + 1}\n`;
-  pdf += '0000000000 65535 f \n';
-  offsets.slice(1).forEach((offset) => {
-    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
-  });
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`;
-
-  return Buffer.from(pdf, 'utf-8');
 }

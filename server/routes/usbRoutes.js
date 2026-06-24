@@ -10,7 +10,7 @@ import {
   assertUsbWritable,
   copyInstallers,
   writeLicenseJson,
-  writeStartHerePdf,
+  writeStartHereTxt,
 } from '../services/usbWriteService.js';
 import { verifyUsbContents } from '../services/usbVerifyService.js';
 import { createLicenseForCustomer } from '../services/keygenService.js';
@@ -205,7 +205,7 @@ router.post('/local/fulfill-customer', async (req, res) => {
     await assertUsbWritable(preparedDrive.mountPath);
     await writeLicenseJson(preparedDrive.mountPath, customer, fullKey);
     await assertUsbWritable(preparedDrive.mountPath);
-    await writeStartHerePdf(preparedDrive.mountPath);
+    await writeStartHereTxt(preparedDrive.mountPath);
     await assertUsbWritable(preparedDrive.mountPath);
 
     const verification = await verifyUsbContents(preparedDrive.mountPath);
@@ -235,7 +235,7 @@ router.post('/local/fulfill-customer', async (req, res) => {
       recordId,
       licenseId,
       maskedLicense: masked,
-      licenseFile: 'license.json',
+      licenseFile: '.credit-key/license.dat',
       drive: preparedDrive,
       formatResult,
       copiedInstallers,
@@ -272,7 +272,7 @@ router.post('/usb/format', async (req, res) => {
 });
 
 // POST /admin/prepare-usb-record
-// Runs: copy installers -> write license.json -> write START-HERE.pdf -> verify
+// Runs: copy installers -> write .credit-key/license.dat -> write START-HERE.txt -> verify
 router.post('/prepare-usb-record', async (req, res) => {
   const { customerId, licenseId, mountPath, preparedBy } = req.body || {};
 
@@ -298,7 +298,7 @@ router.post('/prepare-usb-record', async (req, res) => {
     await assertUsbWritable(mountPath);
     const copiedInstallers = await copyInstallers(INSTALLERS_DIR, mountPath);
     await writeLicenseJson(mountPath, customer, fullKey);
-    await writeStartHerePdf(mountPath);
+    await writeStartHereTxt(mountPath);
     await assertUsbWritable(mountPath);
 
     // Discard the full key from memory immediately after writing.

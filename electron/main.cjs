@@ -4,6 +4,8 @@ const fs = require('fs');
 const os = require('os');
 const dotenv = require('dotenv');
 
+let mainWindow = null;
+
 function appendStartupLog(message, detail) {
   try {
     const logDir = path.join(os.homedir(), 'Library', 'Application Support', 'Credit Analyzer USB Key', 'logs');
@@ -74,7 +76,7 @@ async function startBackend() {
 
 function createWindow() {
   appendStartupLog('creating window');
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1040,
     height: 740,
     minWidth: 940,
@@ -87,24 +89,39 @@ function createWindow() {
     },
   });
 
-  win.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
+  mainWindow.loadFile(path.join(__dirname, '..', 'dist', 'index.html'));
   appendStartupLog('window file loaded');
 }
 
-app.whenReady().then(async () => {
-  try {
-    appendStartupLog('app ready');
-    await startBackend();
-    createWindow();
-  } catch (error) {
-    appendStartupLog('startup failed', { message: error.message, stack: error.stack });
-    app.quit();
-  }
-
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+const singleInstanceLock = app.requestSingleInstanceLock();
+if (!singleInstanceLock) {
+  appendStartupLog('second instance blocked');
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    appendStartupLog('second instance focused existing window');
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.focus();
   });
-});
+}
+
+if (singleInstanceLock) {
+  app.whenReady().then(async () => {
+    try {
+      appendStartupLog('app ready');
+      await startBackend();
+      createWindow();
+    } catch (error) {
+      appendStartupLog('startup failed', { message: error.message, stack: error.stack });
+      app.quit();
+    }
+
+    app.on('activate', () => {
+      if (BrowserWindow.getAllWindows().length === 0) createWindow();
+    });
+  });
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit();

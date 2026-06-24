@@ -1,17 +1,20 @@
 import express from 'express';
 import crypto from 'crypto';
 import path from 'path';
+import fs from 'fs/promises';
 import { db } from '../db.js';
 import { requireAdminAuth } from '../middleware/auth.js';
 import { listRemovableDrives } from '../services/usbDetectionService.js';
 import { formatDrive, VOLUME_LABEL } from '../services/usbFormatService.js';
 import {
+  assertUsbWritable,
   copyInstallers,
   writeLicenseJson,
   writeStartHerePdf,
 } from '../services/usbWriteService.js';
 import { verifyUsbContents } from '../services/usbVerifyService.js';
 import { createLicenseForCustomer } from '../services/keygenService.js';
+import { diagnoseUsbState } from '../services/usbDiagnosticsService.js';
 import { pendingFullKeys } from './customerRoutes.js';
 
 const router = express.Router();
@@ -39,7 +42,28 @@ async function findReadyDrive({ mountPath, devicePath }) {
     if (byDevice) return { selectedDrive: byDevice, readyDrives };
   }
 
+  if (mountPath && await canReadMountPath(mountPath)) {
+    const fallbackDrive = {
+      devicePath: devicePath || null,
+      mountPath,
+      driveName: path.basename(mountPath),
+      isReady: true,
+      isRemovable: true,
+      diagnosticFallback: true,
+    };
+    return { selectedDrive: fallbackDrive, readyDrives: [fallbackDrive] };
+  }
+
   return { selectedDrive: null, readyDrives };
+}
+
+async function canReadMountPath(mountPath) {
+  try {
+    const stat = await fs.stat(mountPath);
+    return stat.isDirectory();
+  } catch {
+    return false;
+  }
 }
 
 async function waitForFormattedDrive(previousDrive) {
@@ -47,14 +71,36 @@ async function waitForFormattedDrive(previousDrive) {
     await wait(1000);
     const drives = await listRemovableDrives();
     const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
-    const formatted = readyDrives.find((drive) => drive.devicePath === previousDrive.devicePath)
+    const formatted = readyDrives.find((drive) => drive.devicePath && drive.devicePath === previousDrive.devicePath)
       || readyDrives.find((drive) => drive.mountPath?.includes(VOLUME_LABEL))
       || (readyDrives.length === 1 ? readyDrives[0] : null);
 
     if (formatted) return formatted;
+
+    const fallbackMount = `/Volumes/${VOLUME_LABEL}`;
+    if (await canReadMountPath(fallbackMount)) {
+      return {
+        devicePath: previousDrive.devicePath || null,
+        mountPath: fallbackMount,
+        driveName: VOLUME_LABEL,
+        isReady: true,
+        isRemovable: true,
+        diagnosticFallback: true,
+      };
+    }
   }
 
   throw new Error('USB was formatted, but the formatted drive did not remount in time.');
+}
+
+function usbErrorPayload(err) {
+  if (err?.code !== 'USB_DISCONNECTED') return null;
+
+  return {
+    error: 'USB has been disconnected. Reconnect the USB and try again.',
+    usbDisconnected: true,
+    mountPath: err.mountPath,
+  };
 }
 
 // GET /admin/usb/detect
@@ -65,6 +111,18 @@ router.get('/usb/detect', async (req, res) => {
   } catch (err) {
     console.error('[usb/detect]', err.message);
     res.status(500).json({ error: 'Could not enumerate removable drives.' });
+  }
+});
+
+// GET /admin/usb/diagnose
+// Compares app-level USB detection with macOS-visible mounted volumes.
+router.get('/usb/diagnose', async (req, res) => {
+  try {
+    const diagnosis = await diagnoseUsbState();
+    res.json(diagnosis);
+  } catch (err) {
+    console.error('[usb/diagnose]', err.message);
+    res.status(500).json({ error: 'Could not diagnose USB state.' });
   }
 });
 
@@ -114,6 +172,8 @@ router.post('/local/fulfill-customer', async (req, res) => {
       preparedDrive = await waitForFormattedDrive(selectedDrive);
     }
 
+    await assertUsbWritable(preparedDrive.mountPath);
+
     const { fullKey, keygenLicenseId, masked } = await createLicenseForCustomer({
       id: customer.id,
       firstName: customer.first_name,
@@ -130,8 +190,11 @@ router.post('/local/fulfill-customer', async (req, res) => {
     ).run(licenseId, customer.id, keygenLicenseId, masked, fingerprint);
 
     const copiedInstallers = await copyInstallers(INSTALLERS_DIR, preparedDrive.mountPath);
+    await assertUsbWritable(preparedDrive.mountPath);
     await writeLicenseJson(preparedDrive.mountPath, customer, fullKey);
+    await assertUsbWritable(preparedDrive.mountPath);
     await writeStartHerePdf(preparedDrive.mountPath);
+    await assertUsbWritable(preparedDrive.mountPath);
 
     const verification = await verifyUsbContents(preparedDrive.mountPath);
     const recordId = crypto.randomUUID();
@@ -170,6 +233,8 @@ router.post('/local/fulfill-customer', async (req, res) => {
     });
   } catch (err) {
     console.error('[local/fulfill-customer]', err.message);
+    const payload = usbErrorPayload(err);
+    if (payload) return res.status(409).json(payload);
     res.status(500).json({ error: err.message });
   }
 });
@@ -218,9 +283,11 @@ router.post('/prepare-usb-record', async (req, res) => {
   }
 
   try {
+    await assertUsbWritable(mountPath);
     const copiedInstallers = await copyInstallers(INSTALLERS_DIR, mountPath);
     await writeLicenseJson(mountPath, customer, fullKey);
     await writeStartHerePdf(mountPath);
+    await assertUsbWritable(mountPath);
 
     // Discard the full key from memory immediately after writing.
     pendingFullKeys.delete(licenseId);
@@ -258,6 +325,8 @@ router.post('/prepare-usb-record', async (req, res) => {
     });
   } catch (err) {
     console.error('[prepare-usb-record]', err.message);
+    const payload = usbErrorPayload(err);
+    if (payload) return res.status(409).json(payload);
     res.status(500).json({ error: err.message });
   }
 });

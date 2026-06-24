@@ -44,6 +44,8 @@ export const api = {
 
   detectUsb: () => request('/admin/usb/detect'),
 
+  diagnoseUsb: () => request('/admin/usb/diagnose'),
+
   formatUsb: (devicePath, mountPath, confirmationText) =>
     request('/admin/usb/format', {
       method: 'POST',

@@ -59,13 +59,34 @@ async function findInstallerSource(installersDir, candidates) {
   return null;
 }
 
+export async function assertUsbWritable(usbMountPath) {
+  if (!usbMountPath) {
+    const err = new Error('USB License Key Not Detected. Please plug in your Credit Analyzer USB to continue.');
+    err.code = 'USB_DISCONNECTED';
+    throw err;
+  }
+
+  try {
+    const stat = await fs.stat(usbMountPath);
+    if (!stat.isDirectory()) throw new Error('USB mount path is not a directory.');
+    await fs.access(usbMountPath);
+  } catch {
+    const err = new Error('USB has been disconnected. Reconnect the USB and try again.');
+    err.code = 'USB_DISCONNECTED';
+    err.mountPath = usbMountPath;
+    throw err;
+  }
+}
+
 /**
  * Copies the two production installers onto the USB.
  */
 export async function copyInstallers(installersDir, usbMountPath) {
   const copied = [];
+  await assertUsbWritable(usbMountPath);
 
   for (const installer of INSTALLER_SOURCES) {
+    await assertUsbWritable(usbMountPath);
     assertNotForbidden(installer.destination);
 
     const source = await findInstallerSource(installersDir, installer.candidates);
@@ -78,6 +99,7 @@ export async function copyInstallers(installersDir, usbMountPath) {
 
     const dest = path.join(usbMountPath, installer.destination);
     await fs.copyFile(source.sourcePath, dest);
+    await assertUsbWritable(usbMountPath);
     copied.push({ source: source.filename, destination: installer.destination });
   }
 
@@ -90,6 +112,7 @@ export async function copyInstallers(installersDir, usbMountPath) {
  * remains the source of truth for activation, machine limits, and status.
  */
 export async function writeLicenseJson(usbMountPath, customer, fullLicenseKey) {
+  await assertUsbWritable(usbMountPath);
   assertNotForbidden(USB_FILES.license);
   const payload = {
     licenseKey: fullLicenseKey,
@@ -100,6 +123,7 @@ export async function writeLicenseJson(usbMountPath, customer, fullLicenseKey) {
 
   const filePath = path.join(usbMountPath, USB_FILES.license);
   await fs.writeFile(filePath, `${JSON.stringify(payload, null, 2)}\n`, 'utf-8');
+  await assertUsbWritable(usbMountPath);
   return filePath;
 }
 
@@ -107,6 +131,7 @@ export async function writeLicenseJson(usbMountPath, customer, fullLicenseKey) {
  * Generates a small customer-facing PDF.
  */
 export async function writeStartHerePdf(usbMountPath) {
+  await assertUsbWritable(usbMountPath);
   assertNotForbidden(USB_FILES.startHere);
 
   const lines = [
@@ -126,6 +151,7 @@ export async function writeStartHerePdf(usbMountPath) {
 
   const filePath = path.join(usbMountPath, USB_FILES.startHere);
   await fs.writeFile(filePath, createSimplePdf(lines));
+  await assertUsbWritable(usbMountPath);
   return filePath;
 }
 

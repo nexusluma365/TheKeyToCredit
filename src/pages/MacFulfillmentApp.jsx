@@ -90,6 +90,7 @@ export default function MacFulfillmentApp() {
   const [workStartedAt, setWorkStartedAt] = useState(null);
   const [workView, setWorkView] = useState(null);
   const [configWarning, setConfigWarning] = useState(null);
+  const [usbSafetyAlert, setUsbSafetyAlert] = useState(null);
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.customerId === selectedId) || null,
@@ -180,11 +181,73 @@ export default function MacFulfillmentApp() {
     return () => clearInterval(id);
   }, [busy, progress, workStartedAt]);
 
+  useEffect(() => {
+    if (!busy || !targetDrive?.mountPath || !workStartedAt) return undefined;
+
+    const monitorMountPath = targetDrive.mountPath;
+    const canCheckForDisconnect = () => !formatFirst || Date.now() - workStartedAt > 15000;
+
+    const id = setInterval(async () => {
+      if (!canCheckForDisconnect()) return;
+
+      try {
+        const driveData = await api.detectUsb();
+        const nextDrives = driveData.drives || [];
+        setDrives(nextDrives);
+        const stillVisible = nextDrives.some((drive) => (
+          drive.isReady && drive.mountPath === monitorMountPath
+        ));
+
+        if (stillVisible) {
+          if (usbSafetyAlert?.type === 'diagnosing') setUsbSafetyAlert(null);
+          return;
+        }
+
+        setStatus('Checking USB');
+        setUsbSafetyAlert({
+          type: 'diagnosing',
+          message: 'The app lost sight of the USB. Self-diagnosing with macOS now.',
+        });
+
+        const diagnosis = await api.diagnoseUsb();
+        if (diagnosis.diagnosis === 'system_can_read_usb_app_cannot') {
+          setDrives(
+            diagnosis.mountedAppDrives?.length
+              ? diagnosis.mountedAppDrives
+              : diagnosis.fallbackDrives || []
+          );
+          setUsbSafetyAlert({
+            type: 'diagnosing',
+            message: 'macOS can still read the USB. Drive detection was refreshed; continuing to watch it.',
+          });
+          return;
+        }
+
+        setStatus('USB disconnected');
+        setUsbSafetyAlert({
+          type: 'disconnected',
+          message: 'USB has been disconnected. Reconnect the USB and try again.',
+        });
+        setError('USB has been disconnected. Reconnect the USB and try again.');
+      } catch {
+        setStatus('USB disconnected');
+        setUsbSafetyAlert({
+          type: 'disconnected',
+          message: 'USB has been disconnected. Reconnect the USB and try again.',
+        });
+        setError('USB has been disconnected. Reconnect the USB and try again.');
+      }
+    }, 1500);
+
+    return () => clearInterval(id);
+  }, [busy, formatFirst, targetDrive?.mountPath, usbSafetyAlert?.type, workStartedAt]);
+
   async function handleCreateCustomer(event) {
     event.preventDefault();
     setBusy(true);
     setError(null);
     setResult(null);
+    setUsbSafetyAlert(null);
     setStatus('Saving customer');
 
     try {
@@ -232,8 +295,17 @@ export default function MacFulfillmentApp() {
       setFormatConfirm('');
       await load();
     } catch (err) {
-      setError(err.message);
-      setStatus('Needs attention');
+      if (err.usbDisconnected) {
+        setUsbSafetyAlert({
+          type: 'disconnected',
+          message: 'USB has been disconnected. Reconnect the USB and try again.',
+        });
+        setError('USB has been disconnected. Reconnect the USB and try again.');
+        setStatus('USB disconnected');
+      } else {
+        setError(err.message);
+        setStatus('Needs attention');
+      }
       if (err.drives) setDrives(err.drives);
     } finally {
       setBusy(false);
@@ -361,6 +433,16 @@ export default function MacFulfillmentApp() {
                     />
                   ))}
                 </div>
+              </div>
+            )}
+
+            {usbSafetyAlert && (
+              <div className={`mt-5 w-full max-w-xl rounded-[22px] border px-5 py-4 text-left text-sm font-semibold shadow-[0_12px_34px_rgba(15,23,42,0.1)] ${
+                usbSafetyAlert.type === 'disconnected'
+                  ? 'border-[#FCA5A5] bg-[#FEF2F2] text-[#B91C1C]'
+                  : 'border-[#BFDBFE] bg-[#EFF6FF] text-[#1D4ED8]'
+              }`}>
+                {usbSafetyAlert.message}
               </div>
             )}
           </section>

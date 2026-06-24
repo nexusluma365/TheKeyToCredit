@@ -43,8 +43,8 @@ async function formatOnMac(devicePath) {
   }
 
   try {
-    // diskutil eraseDisk <format> <name> <device>
-    const { stdout } = await execFileAsync('diskutil', ['eraseDisk', 'ExFAT', VOLUME_LABEL, devicePath]);
+    // diskutil eraseDisk <format> <name> <partitionScheme> <device>
+    const { stdout } = await execFileAsync('diskutil', ['eraseDisk', 'ExFAT', VOLUME_LABEL, 'MBRFormat', devicePath]);
     return { automated: true, output: stdout, label: VOLUME_LABEL };
   } catch (err) {
     return {

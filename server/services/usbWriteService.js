@@ -10,6 +10,25 @@ export const USB_FILES = {
 
 export const PRODUCT_NAME = 'Credit Report Analyzer Pro';
 
+const INSTALLER_SOURCES = [
+  {
+    destination: USB_FILES.windowsInstaller,
+    candidates: [
+      USB_FILES.windowsInstaller,
+      'CreditAnalyzer Setup.exe',
+      'Credit Report Analyzer Pro Setup 0.1.0.exe',
+    ],
+  },
+  {
+    destination: USB_FILES.macInstaller,
+    candidates: [
+      USB_FILES.macInstaller,
+      'CreditAnalyzer.dmg',
+      'Credit Report Analyzer Pro-0.1.0.dmg',
+    ],
+  },
+];
+
 /**
  * Files that must NEVER be written to a customer USB, even by accident.
  * Used as a defensive check before any copy operation.
@@ -26,26 +45,40 @@ function assertNotForbidden(filename) {
   }
 }
 
+async function findInstallerSource(installersDir, candidates) {
+  for (const filename of candidates) {
+    const sourcePath = path.join(installersDir, filename);
+    try {
+      await fs.access(sourcePath);
+      return { filename, sourcePath };
+    } catch {
+      // Try the next supported build output name.
+    }
+  }
+
+  return null;
+}
+
 /**
  * Copies the two production installers onto the USB.
  */
 export async function copyInstallers(installersDir, usbMountPath) {
-  const expected = [USB_FILES.windowsInstaller, USB_FILES.macInstaller];
   const copied = [];
 
-  for (const filename of expected) {
-    assertNotForbidden(filename);
-    const src = path.join(installersDir, filename);
-    const dest = path.join(usbMountPath, filename);
+  for (const installer of INSTALLER_SOURCES) {
+    assertNotForbidden(installer.destination);
 
-    try {
-      await fs.access(src);
-    } catch {
-      throw new Error(`Missing required installer in repository: ${filename}`);
+    const source = await findInstallerSource(installersDir, installer.candidates);
+    if (!source) {
+      throw new Error(
+        `Missing required installer in ${installersDir}: ${installer.destination}. ` +
+        `Also checked: ${installer.candidates.join(', ')}`
+      );
     }
 
-    await fs.copyFile(src, dest);
-    copied.push(filename);
+    const dest = path.join(usbMountPath, installer.destination);
+    await fs.copyFile(source.sourcePath, dest);
+    copied.push({ source: source.filename, destination: installer.destination });
   }
 
   return copied;

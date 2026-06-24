@@ -27,7 +27,7 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function findReadyDrive({ mountPath, devicePath }) {
+async function findReadyDrive({ mountPath, devicePath, allowUnready = false }) {
   const drives = await listRemovableDrives();
   const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
   const selectedDrive = mountPath
@@ -38,8 +38,13 @@ async function findReadyDrive({ mountPath, devicePath }) {
 
   if (selectedDrive) return { selectedDrive, readyDrives };
   if (devicePath) {
-    const byDevice = readyDrives.find((drive) => drive.devicePath === devicePath);
+    const sourceDrives = allowUnready ? drives : readyDrives;
+    const byDevice = sourceDrives.find((drive) => drive.devicePath === devicePath);
     if (byDevice) return { selectedDrive: byDevice, readyDrives };
+  }
+
+  if (allowUnready && !mountPath && readyDrives.length === 0 && drives.length === 1) {
+    return { selectedDrive: drives[0], readyDrives };
   }
 
   if (mountPath && await canReadMountPath(mountPath)) {
@@ -130,22 +135,29 @@ router.get('/usb/diagnose', async (req, res) => {
 // Local Mac app one-button flow:
 // selected customer -> single mounted USB -> Keygen license -> write USB -> record.
 router.post('/local/fulfill-customer', async (req, res) => {
-  const { customerId, mountPath, formatFirst = true, confirmationText, preparedBy } = req.body || {};
+  const { customerId, mountPath, devicePath, formatFirst = true, confirmationText, preparedBy } = req.body || {};
   if (!customerId) return res.status(400).json({ error: 'customerId is required.' });
 
   const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
   if (!customer) return res.status(404).json({ error: 'Customer not found.' });
 
   try {
-    const { selectedDrive, readyDrives } = await findReadyDrive({ mountPath });
+    const { selectedDrive, readyDrives } = await findReadyDrive({
+      mountPath,
+      devicePath,
+      allowUnready: formatFirst,
+    });
 
     if (!selectedDrive) {
+      const drives = await listRemovableDrives();
       return res.status(409).json({
         error:
           readyDrives.length === 0
-            ? 'No mounted USB drive detected.'
+            ? drives.length > 0 && formatFirst
+              ? 'USB is connected but not readable. Keep FORMAT enabled to erase and prepare it.'
+              : 'No mounted USB drive detected.'
             : 'Multiple USB drives detected. Leave only the target USB connected and try again.',
-        drives: readyDrives,
+        drives: drives.length > 0 ? drives : readyDrives,
       });
     }
 

@@ -109,7 +109,12 @@ export default function MacFulfillmentApp() {
   }, [customers, query]);
 
   const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
-  const targetDrive = readyDrives.length === 1 ? readyDrives[0] : null;
+  const connectedDrives = drives.filter((drive) => drive.isRemovable !== false);
+  const targetDrive = readyDrives.length === 1
+    ? readyDrives[0]
+    : formatFirst && readyDrives.length === 0 && connectedDrives.length === 1
+      ? connectedDrives[0]
+      : null;
 
   const loadDrives = useCallback(async ({ quiet = false } = {}) => {
     if (!quiet) setLoading(true);
@@ -281,6 +286,7 @@ export default function MacFulfillmentApp() {
       const fulfilled = await api.fulfillCustomer({
         customerId: selectedCustomer.customerId,
         mountPath: targetDrive?.mountPath,
+        devicePath: targetDrive?.devicePath,
         formatFirst,
         confirmationText: formatFirst ? formatConfirm : undefined,
       });
@@ -340,10 +346,12 @@ export default function MacFulfillmentApp() {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  const actionDisabled = !selectedCustomer || !targetDrive || busy || (formatFirst && formatConfirm !== 'FORMAT');
+  const actionDisabled = !selectedCustomer || !targetDrive || busy || (formatFirst && formatConfirm !== 'FORMAT') || (!formatFirst && !targetDrive.mountPath);
   const usbStatusText = targetDrive
-    ? `USB connected: ${targetDrive.driveName}`
-    : readyDrives.length > 1
+    ? targetDrive.isReady
+      ? `USB connected: ${targetDrive.driveName}`
+      : `USB connected: ${targetDrive.driveName} needs format`
+    : connectedDrives.length > 1
       ? 'Multiple USB drives detected'
       : 'USB not connected';
 
@@ -605,9 +613,16 @@ export default function MacFulfillmentApp() {
                     {targetDrive ? (
                       <div>
                         <div className="font-semibold text-[#111827]">{targetDrive.driveName}</div>
-                        <div className="truncate text-xs">{targetDrive.mountPath}</div>
+                        <div className="truncate text-xs">
+                          {targetDrive.mountPath || `${targetDrive.devicePath} · not mounted, ready to format`}
+                        </div>
+                        {!targetDrive.isReady && (
+                          <div className="mt-1 text-xs font-semibold leading-5 text-[#9A5B00]">
+                            macOS cannot read this USB yet. Click Ignore on the macOS popup, keep FORMAT enabled, then prepare it here.
+                          </div>
+                        )}
                       </div>
-                    ) : readyDrives.length > 1 ? (
+                    ) : connectedDrives.length > 1 ? (
                       <div className="text-[#9A5B00]">Multiple USB drives detected.</div>
                     ) : (
                       <div className="text-[#9A5B00]">No mounted USB drive detected.</div>

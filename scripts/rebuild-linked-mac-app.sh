@@ -10,7 +10,8 @@ if lsof -ti tcp:4001 >/dev/null 2>&1; then
   exit 1
 fi
 
-env -u ELECTRON_RUN_AS_NODE npm run mac:build
+env -u ELECTRON_RUN_AS_NODE npm run usb:build
+env -u ELECTRON_RUN_AS_NODE npx electron-builder --mac dir
 
 APP_LINK="/Applications/Credit Analyzer USB Key.app"
 APP_TARGET="$ROOT_DIR/dist/mac/Credit Analyzer USB Key.app"

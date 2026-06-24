@@ -35,6 +35,8 @@ export const api = {
   createCustomer: (payload) =>
     request('/admin/create-customer', { method: 'POST', body: JSON.stringify(payload) }),
 
+  deleteCustomer: (id) => request(`/admin/customers/${id}`, { method: 'DELETE' }),
+
   getCustomer: (id) => request(`/admin/customers/${id}`),
 
   generateLicense: (customerId) =>
@@ -56,10 +58,10 @@ export const api = {
 
   getFulfillmentRecords: () => request('/admin/fulfillment-records'),
 
-  fulfillCustomer: (customerId, mountPath) =>
+  fulfillCustomer: (payload) =>
     request('/admin/local/fulfill-customer', {
       method: 'POST',
-      body: JSON.stringify({ customerId, mountPath }),
+      body: JSON.stringify(payload),
     }),
 
   bulkImport: (file) => {

@@ -8,6 +8,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   Usb,
 } from 'lucide-react';
 import { api } from '../services/api';
@@ -27,6 +28,10 @@ export default function MacFulfillmentApp() {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
   const [form, setForm] = useState({ firstName: '', lastName: '', email: '', orderId: '' });
+  const [formatFirst, setFormatFirst] = useState(true);
+  const [formatConfirm, setFormatConfirm] = useState('');
+  const [lastUsbCheck, setLastUsbCheck] = useState(null);
+  const [progress, setProgress] = useState([]);
 
   const selectedCustomer = useMemo(
     () => customers.find((customer) => customer.customerId === selectedId) || null,
@@ -47,14 +52,31 @@ export default function MacFulfillmentApp() {
   const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
   const targetDrive = readyDrives.length === 1 ? readyDrives[0] : null;
 
+  const loadDrives = useCallback(async ({ quiet = false } = {}) => {
+    if (!quiet) setLoading(true);
+    try {
+      const driveData = await api.detectUsb();
+      setDrives(driveData.drives || []);
+      setLastUsbCheck(new Date());
+      if (!quiet) setStatus('Ready');
+    } catch (err) {
+      if (!quiet) {
+        setError(err.message);
+        setStatus('Needs attention');
+      }
+    } finally {
+      if (!quiet) setLoading(false);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const [customerData, driveData] = await Promise.all([api.getCustomers(), api.detectUsb()]);
+      const customerData = await api.getCustomers();
       const nextCustomers = customerData.customers || [];
       setCustomers(nextCustomers);
-      setDrives(driveData.drives || []);
+      await loadDrives({ quiet: true });
       setStatus('Ready');
       if (!selectedId && nextCustomers[0]) setSelectedId(nextCustomers[0].customerId);
     } catch (err) {
@@ -63,11 +85,18 @@ export default function MacFulfillmentApp() {
     } finally {
       setLoading(false);
     }
-  }, [selectedId]);
+  }, [loadDrives, selectedId]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!busy) loadDrives({ quiet: true });
+    }, 2000);
+    return () => clearInterval(id);
+  }, [busy, loadDrives]);
 
   async function handleCreateCustomer(event) {
     event.preventDefault();
@@ -96,12 +125,25 @@ export default function MacFulfillmentApp() {
     setBusy(true);
     setError(null);
     setResult(null);
-    setStatus('Generating license');
+    setProgress([
+      formatFirst ? 'Formatting USB as CREDIT_ANALYZER' : 'Using existing USB format',
+      'Generating Keygen license',
+      'Copying installers',
+      'Writing license.json and START-HERE.pdf',
+      'Verifying USB contents',
+    ]);
+    setStatus(formatFirst ? 'Formatting USB' : 'Preparing USB');
 
     try {
-      const fulfilled = await api.fulfillCustomer(selectedCustomer.customerId, targetDrive?.mountPath);
+      const fulfilled = await api.fulfillCustomer({
+        customerId: selectedCustomer.customerId,
+        mountPath: targetDrive?.mountPath,
+        formatFirst,
+        confirmationText: formatFirst ? formatConfirm : undefined,
+      });
       setResult(fulfilled);
       setStatus(fulfilled.readyToShip ? 'USB key ready' : 'USB written, verify warnings');
+      setFormatConfirm('');
       await load();
     } catch (err) {
       setError(err.message);
@@ -112,11 +154,39 @@ export default function MacFulfillmentApp() {
     }
   }
 
+  async function handleDeleteCustomer(customer) {
+    if (!customer || busy) return;
+    const confirmed = window.confirm(`Remove ${fullName(customer)} and local fulfillment records?`);
+    if (!confirmed) return;
+
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    setStatus('Removing customer');
+    try {
+      await api.deleteCustomer(customer.customerId);
+      setCustomers((current) => current.filter((item) => item.customerId !== customer.customerId));
+      if (selectedId === customer.customerId) setSelectedId(null);
+      setStatus('Customer removed');
+      await load();
+    } catch (err) {
+      setError(err.message);
+      setStatus('Needs attention');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
   }
 
-  const actionDisabled = !selectedCustomer || !targetDrive || busy;
+  const actionDisabled = !selectedCustomer || !targetDrive || busy || (formatFirst && formatConfirm !== 'FORMAT');
+  const usbStatusText = targetDrive
+    ? `USB connected: ${targetDrive.driveName}`
+    : readyDrives.length > 1
+      ? 'Multiple USB drives detected'
+      : 'USB not connected';
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#EAF7FA] text-[#101723]">
@@ -129,6 +199,11 @@ export default function MacFulfillmentApp() {
             </div>
 
             <div className="flex items-center gap-3">
+              <div className={`rounded-full px-4 py-2 text-sm font-semibold shadow-[0_8px_24px_rgba(15,23,42,0.08)] ${
+                targetDrive ? 'bg-[#ECFDF5] text-[#047857]' : 'bg-[#FFF7ED] text-[#B45309]'
+              }`}>
+                {usbStatusText}
+              </div>
               <div className="rounded-full bg-white/70 px-4 py-2 text-sm font-medium text-[#4B5563] shadow-[0_8px_24px_rgba(15,23,42,0.08)]">
                 {status}
               </div>
@@ -159,7 +234,7 @@ export default function MacFulfillmentApp() {
               className="mt-9 inline-flex h-14 min-w-[270px] items-center justify-center gap-3 rounded-full bg-[#2563EB] px-8 text-base font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.32),inset_0_-2px_0_rgba(0,0,0,0.16)] transition hover:bg-[#1D4ED8] active:translate-y-px disabled:cursor-not-allowed disabled:bg-[#9BA7BA] disabled:shadow-none"
             >
               {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <KeyRound className="h-5 w-5" />}
-              {busy ? 'Writing USB Key' : 'Generate License And Write USB'}
+              {busy ? 'Preparing USB Key' : formatFirst ? 'Format, Generate And Write USB' : 'Generate License And Write USB'}
             </button>
           </section>
 
@@ -243,29 +318,43 @@ export default function MacFulfillmentApp() {
                     filteredCustomers.map((customer) => {
                       const selected = customer.customerId === selectedId;
                       return (
-                        <button
+                        <div
                           key={customer.customerId}
-                          onClick={() => {
-                            setSelectedId(customer.customerId);
-                            setResult(null);
-                            setError(null);
-                          }}
-                          className={`mb-2 grid w-full grid-cols-[1fr_auto] items-center gap-4 rounded-[18px] px-4 py-3 text-left transition ${
+                          className={`mb-2 grid w-full grid-cols-[1fr_auto_auto] items-center gap-3 rounded-[18px] px-4 py-3 transition ${
                             selected
                               ? 'bg-[#111827] text-white shadow-[0_12px_24px_rgba(15,23,42,0.22)]'
                               : 'bg-white/72 text-[#111827] hover:bg-white'
                           }`}
                         >
-                          <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedId(customer.customerId);
+                              setResult(null);
+                              setError(null);
+                            }}
+                            className="min-w-0 text-left"
+                          >
                             <div className="truncate text-sm font-semibold">{fullName(customer)}</div>
                             <div className={`truncate text-xs ${selected ? 'text-white/65' : 'text-[#6B7280]'}`}>
                               {customer.email}
                             </div>
-                          </div>
+                          </button>
                           <div className={`text-xs font-medium ${selected ? 'text-white/70' : 'text-[#8C95A3]'}`}>
                             {customer.maskedLicense ? 'Licensed' : 'New'}
                           </div>
-                        </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteCustomer(customer)}
+                            disabled={busy}
+                            className={`flex h-8 w-8 items-center justify-center rounded-full transition ${
+                              selected ? 'text-white/65 hover:bg-white/10 hover:text-white' : 'text-[#9CA3AF] hover:bg-[#FEE2E2] hover:text-[#B91C1C]'
+                            }`}
+                            title="Remove customer"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       );
                     })
                   )}
@@ -315,7 +404,48 @@ export default function MacFulfillmentApp() {
                       <div className="text-[#9A5B00]">No mounted USB drive detected.</div>
                     )}
                   </div>
+                  <div className="mt-3 text-xs text-[#6B7280]">
+                    Live check {lastUsbCheck ? lastUsbCheck.toLocaleTimeString() : 'pending'}.
+                  </div>
                 </div>
+
+                <div className="rounded-[22px] border border-black/10 bg-white/64 p-5">
+                  <label className="flex items-start gap-3 text-sm font-semibold text-[#111827]">
+                    <input
+                      type="checkbox"
+                      checked={formatFirst}
+                      onChange={(event) => setFormatFirst(event.target.checked)}
+                      disabled={busy}
+                      className="mt-1"
+                    />
+                    <span>
+                      Format USB before writing
+                      <span className="mt-1 block text-xs font-normal leading-5 text-[#6B7280]">
+                        Recommended. This erases the selected USB, labels it CREDIT_ANALYZER, then writes only the required files.
+                      </span>
+                    </span>
+                  </label>
+                  {formatFirst && (
+                    <input
+                      value={formatConfirm}
+                      onChange={(event) => setFormatConfirm(event.target.value)}
+                      disabled={busy}
+                      className="mt-3 h-10 w-full rounded-full border border-black/10 bg-white/80 px-4 text-sm outline-none transition focus:ring-2 focus:ring-[#2563EB]/20"
+                      placeholder="Type FORMAT to enable writing"
+                    />
+                  )}
+                </div>
+
+                {busy && progress.length > 0 && (
+                  <div className="rounded-[18px] border border-[#2563EB]/15 bg-[#EFF6FF] px-4 py-3 text-sm text-[#1D4ED8]">
+                    <div className="mb-2 font-semibold">Working...</div>
+                    <ol className="list-decimal space-y-1 pl-4">
+                      {progress.map((step) => (
+                        <li key={step}>{step}</li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
 
                 {error && (
                   <div className="rounded-[18px] border border-[#D94D4D]/20 bg-[#FFF3F3] px-4 py-3 text-sm text-[#B73838]">

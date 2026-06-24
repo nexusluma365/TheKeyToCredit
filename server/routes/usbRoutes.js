@@ -20,6 +20,43 @@ router.use(requireAdminAuth);
 const INSTALLERS_DIR = process.env.INSTALLERS_DIR || path.join(process.cwd(), 'installers');
 const APP_VERSION = process.env.APP_VERSION || '1.0.0';
 
+function wait(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function findReadyDrive({ mountPath, devicePath }) {
+  const drives = await listRemovableDrives();
+  const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
+  const selectedDrive = mountPath
+    ? readyDrives.find((drive) => drive.mountPath === mountPath)
+    : readyDrives.length === 1
+      ? readyDrives[0]
+      : null;
+
+  if (selectedDrive) return { selectedDrive, readyDrives };
+  if (devicePath) {
+    const byDevice = readyDrives.find((drive) => drive.devicePath === devicePath);
+    if (byDevice) return { selectedDrive: byDevice, readyDrives };
+  }
+
+  return { selectedDrive: null, readyDrives };
+}
+
+async function waitForFormattedDrive(previousDrive) {
+  for (let attempt = 0; attempt < 12; attempt += 1) {
+    await wait(1000);
+    const drives = await listRemovableDrives();
+    const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
+    const formatted = readyDrives.find((drive) => drive.devicePath === previousDrive.devicePath)
+      || readyDrives.find((drive) => drive.mountPath?.includes('CREDIT_ANALYZER'))
+      || (readyDrives.length === 1 ? readyDrives[0] : null);
+
+    if (formatted) return formatted;
+  }
+
+  throw new Error('USB was formatted, but the formatted drive did not remount in time.');
+}
+
 // GET /admin/usb/detect
 router.get('/usb/detect', async (req, res) => {
   try {
@@ -35,20 +72,14 @@ router.get('/usb/detect', async (req, res) => {
 // Local Mac app one-button flow:
 // selected customer -> single mounted USB -> Keygen license -> write USB -> record.
 router.post('/local/fulfill-customer', async (req, res) => {
-  const { customerId, mountPath, preparedBy } = req.body || {};
+  const { customerId, mountPath, formatFirst = true, confirmationText, preparedBy } = req.body || {};
   if (!customerId) return res.status(400).json({ error: 'customerId is required.' });
 
   const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(customerId);
   if (!customer) return res.status(404).json({ error: 'Customer not found.' });
 
   try {
-    const drives = await listRemovableDrives();
-    const readyDrives = drives.filter((drive) => drive.isReady && drive.mountPath);
-    const selectedDrive = mountPath
-      ? readyDrives.find((drive) => drive.mountPath === mountPath)
-      : readyDrives.length === 1
-        ? readyDrives[0]
-        : null;
+    const { selectedDrive, readyDrives } = await findReadyDrive({ mountPath });
 
     if (!selectedDrive) {
       return res.status(409).json({
@@ -58,6 +89,29 @@ router.post('/local/fulfill-customer', async (req, res) => {
             : 'Multiple USB drives detected. Leave only the target USB connected and try again.',
         drives: readyDrives,
       });
+    }
+
+    if (formatFirst && confirmationText !== 'FORMAT') {
+      return res.status(400).json({ error: 'Type FORMAT to confirm erasing and preparing the selected USB.' });
+    }
+
+    let preparedDrive = selectedDrive;
+    let formatResult = null;
+    if (formatFirst) {
+      formatResult = await formatDrive({
+        devicePath: selectedDrive.devicePath,
+        mountPath: selectedDrive.mountPath,
+        confirmationText,
+      });
+
+      if (!formatResult.automated) {
+        return res.status(409).json({
+          error: formatResult.error || 'Automatic USB formatting did not complete.',
+          formatResult,
+        });
+      }
+
+      preparedDrive = await waitForFormattedDrive(selectedDrive);
     }
 
     const { fullKey, keygenLicenseId, masked } = await createLicenseForCustomer({
@@ -75,11 +129,11 @@ router.post('/local/fulfill-customer', async (req, res) => {
        VALUES (?, ?, ?, ?, ?, 'active')`
     ).run(licenseId, customer.id, keygenLicenseId, masked, fingerprint);
 
-    const copiedInstallers = await copyInstallers(INSTALLERS_DIR, selectedDrive.mountPath);
-    await writeLicenseJson(selectedDrive.mountPath, customer, fullKey);
-    await writeStartHerePdf(selectedDrive.mountPath);
+    const copiedInstallers = await copyInstallers(INSTALLERS_DIR, preparedDrive.mountPath);
+    await writeLicenseJson(preparedDrive.mountPath, customer, fullKey);
+    await writeStartHerePdf(preparedDrive.mountPath);
 
-    const verification = await verifyUsbContents(selectedDrive.mountPath);
+    const verification = await verifyUsbContents(preparedDrive.mountPath);
     const recordId = crypto.randomUUID();
     const status = verification.allPassed ? 'ready_to_ship' : 'prepared';
 
@@ -99,7 +153,7 @@ router.post('/local/fulfill-customer', async (req, res) => {
       APP_VERSION,
       preparedBy || req.admin?.email || 'Local Mac App',
       status,
-      selectedDrive.mountPath
+      preparedDrive.mountPath
     );
 
     res.json({
@@ -107,7 +161,8 @@ router.post('/local/fulfill-customer', async (req, res) => {
       licenseId,
       maskedLicense: masked,
       licenseFile: 'license.json',
-      drive: selectedDrive,
+      drive: preparedDrive,
+      formatResult,
       copiedInstallers,
       verification,
       status,

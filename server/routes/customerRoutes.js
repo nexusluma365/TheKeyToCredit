@@ -88,6 +88,21 @@ router.get('/customers/:id', (req, res) => {
   });
 });
 
+// DELETE /admin/customers/:id
+router.delete('/customers/:id', (req, res) => {
+  const customer = db.prepare('SELECT * FROM customers WHERE id = ?').get(req.params.id);
+  if (!customer) return res.status(404).json({ error: 'Customer not found.' });
+
+  const deleteCustomer = db.transaction((customerId) => {
+    db.prepare('DELETE FROM fulfillment_records WHERE customer_id = ?').run(customerId);
+    db.prepare('DELETE FROM licenses WHERE customer_id = ?').run(customerId);
+    db.prepare('DELETE FROM customers WHERE id = ?').run(customerId);
+  });
+
+  deleteCustomer(customer.id);
+  res.json({ deleted: true, customerId: customer.id });
+});
+
 // POST /admin/create-customer-license
 // Creates a Keygen license for an existing customer.
 // The full license key NEVER leaves this function's local scope as a

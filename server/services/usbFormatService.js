@@ -1,8 +1,9 @@
-import { exec } from 'child_process';
+import { exec, execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const VOLUME_LABEL = 'CREDIT_ANALYZER';
 
@@ -37,11 +38,13 @@ export async function formatDrive({ devicePath, mountPath, confirmationText }) {
 }
 
 async function formatOnMac(devicePath) {
+  if (!devicePath || !/^\/dev\/disk\d+$/i.test(devicePath)) {
+    throw new Error('A valid removable disk device path is required for formatting.');
+  }
+
   try {
     // diskutil eraseDisk <format> <name> <device>
-    const { stdout } = await execAsync(
-      `diskutil eraseDisk ExFAT ${VOLUME_LABEL} ${devicePath}`
-    );
+    const { stdout } = await execFileAsync('diskutil', ['eraseDisk', 'ExFAT', VOLUME_LABEL, devicePath]);
     return { automated: true, output: stdout, label: VOLUME_LABEL };
   } catch (err) {
     return {

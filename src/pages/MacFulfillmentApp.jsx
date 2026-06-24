@@ -4,7 +4,6 @@ import {
   CircleDashed,
   HardDrive,
   KeyRound,
-  Loader2,
   Plus,
   RefreshCw,
   Search,
@@ -15,6 +14,62 @@ import { api } from '../services/api';
 
 function fullName(customer) {
   return `${customer.firstName || ''} ${customer.lastName || ''}`.trim();
+}
+
+function buildFulfillmentStages(formatFirst) {
+  const stages = [
+    {
+      at: 0,
+      title: 'Working',
+      detail: 'Locking in the selected customer and USB drive.',
+    },
+  ];
+
+  if (formatFirst) {
+    stages.push(
+      {
+        at: 1200,
+        title: 'Formatting drive now',
+        detail: 'This may take a few minutes while macOS erases and remounts the USB.',
+      },
+      {
+        at: 8500,
+        title: 'Format finishing',
+        detail: 'Waiting for the USB to come back online cleanly.',
+      }
+    );
+  } else {
+    stages.push({
+      at: 1200,
+      title: 'Checking USB',
+      detail: 'Using the current format and preparing the drive contents.',
+    });
+  }
+
+  stages.push(
+    {
+      at: formatFirst ? 12500 : 3200,
+      title: 'Creating license',
+      detail: 'Generating the customer key and attaching it to this order.',
+    },
+    {
+      at: formatFirst ? 16000 : 6500,
+      title: 'Writing content to USB',
+      detail: 'Copying the Mac and Windows installers, license.json, and START-HERE.pdf.',
+    },
+    {
+      at: formatFirst ? 23000 : 12000,
+      title: 'Few more seconds',
+      detail: 'Verifying every required file before marking the USB ready.',
+    },
+    {
+      at: formatFirst ? 30000 : 18000,
+      title: 'Almost done',
+      detail: 'Large installer files can take a little longer on slower flash drives.',
+    }
+  );
+
+  return stages;
 }
 
 export default function MacFulfillmentApp() {
@@ -32,6 +87,8 @@ export default function MacFulfillmentApp() {
   const [formatConfirm, setFormatConfirm] = useState('');
   const [lastUsbCheck, setLastUsbCheck] = useState(null);
   const [progress, setProgress] = useState([]);
+  const [workStartedAt, setWorkStartedAt] = useState(null);
+  const [workView, setWorkView] = useState(null);
   const [configWarning, setConfigWarning] = useState(null);
 
   const selectedCustomer = useMemo(
@@ -107,6 +164,22 @@ export default function MacFulfillmentApp() {
     return () => clearInterval(id);
   }, [busy, loadDrives]);
 
+  useEffect(() => {
+    if (!busy || !workStartedAt || progress.length === 0) return undefined;
+
+    const tick = () => {
+      const elapsed = Date.now() - workStartedAt;
+      const activeIndex = progress.reduce((currentIndex, stage, index) => (
+        elapsed >= stage.at ? index : currentIndex
+      ), 0);
+      setWorkView({ ...progress[activeIndex], activeIndex, elapsed });
+    };
+
+    tick();
+    const id = setInterval(tick, 900);
+    return () => clearInterval(id);
+  }, [busy, progress, workStartedAt]);
+
   async function handleCreateCustomer(event) {
     event.preventDefault();
     setBusy(true);
@@ -134,13 +207,11 @@ export default function MacFulfillmentApp() {
     setBusy(true);
     setError(null);
     setResult(null);
-    setProgress([
-      formatFirst ? 'Formatting USB as CREDITKEY' : 'Using existing USB format',
-      'Generating Keygen license',
-      'Copying installers',
-      'Writing license.json and START-HERE.pdf',
-      'Verifying USB contents',
-    ]);
+    const fulfillmentStages = buildFulfillmentStages(formatFirst);
+    const startedAt = Date.now();
+    setProgress(fulfillmentStages);
+    setWorkStartedAt(startedAt);
+    setWorkView({ ...fulfillmentStages[0], activeIndex: 0, elapsed: 0 });
     setStatus(formatFirst ? 'Formatting USB' : 'Preparing USB');
 
     try {
@@ -152,6 +223,12 @@ export default function MacFulfillmentApp() {
       });
       setResult(fulfilled);
       setStatus(fulfilled.readyToShip ? 'USB key ready' : 'USB written, verify warnings');
+      setWorkView({
+        title: 'Great, USB is ready',
+        detail: 'Formatting and writing completed successfully.',
+        activeIndex: fulfillmentStages.length,
+        elapsed: Date.now() - startedAt,
+      });
       setFormatConfirm('');
       await load();
     } catch (err) {
@@ -160,6 +237,7 @@ export default function MacFulfillmentApp() {
       if (err.drives) setDrives(err.drives);
     } finally {
       setBusy(false);
+      setWorkStartedAt(null);
     }
   }
 
@@ -254,9 +332,37 @@ export default function MacFulfillmentApp() {
               disabled={actionDisabled}
               className="mt-9 inline-flex h-14 min-w-[270px] items-center justify-center gap-3 rounded-full bg-[#2563EB] px-8 text-base font-semibold text-white shadow-[0_12px_24px_rgba(37,99,235,0.32),inset_0_-2px_0_rgba(0,0,0,0.16)] transition hover:bg-[#1D4ED8] active:translate-y-px disabled:cursor-not-allowed disabled:bg-[#9BA7BA] disabled:shadow-none"
             >
-              {busy ? <Loader2 className="h-5 w-5 animate-spin" /> : <KeyRound className="h-5 w-5" />}
+              {busy ? <span className="h-2.5 w-2.5 rounded-full bg-white shadow-[0_0_0_6px_rgba(255,255,255,0.18)]" /> : <KeyRound className="h-5 w-5" />}
               {busy ? 'Preparing USB Key' : formatFirst ? 'Format, Generate And Write USB' : 'Generate License And Write USB'}
             </button>
+
+            {busy && workView && (
+              <div className="mt-8 w-full max-w-xl rounded-[28px] border border-white/70 bg-[#101827]/92 p-5 text-left text-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] backdrop-blur-xl">
+                <div className="flex items-center gap-5">
+                  <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#2563EB] shadow-[inset_0_-2px_0_rgba(0,0,0,0.18),0_12px_24px_rgba(37,99,235,0.34)]">
+                    <div className="loader" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="working-copy text-xl font-bold leading-tight tracking-normal">
+                      {workView.title}
+                    </div>
+                    <div className="mt-1 text-sm font-semibold leading-6 text-white/72">
+                      {workView.detail}
+                    </div>
+                  </div>
+                </div>
+                <div className="mt-5 flex gap-2">
+                  {progress.map((stage, index) => (
+                    <div
+                      key={stage.title}
+                      className={`h-1.5 flex-1 rounded-full transition ${
+                        index <= (workView.activeIndex || 0) ? 'bg-[#60A5FA]' : 'bg-white/16'
+                      }`}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </section>
 
           <section className="rounded-[30px] border border-white/90 bg-white/78 p-8 shadow-[0_24px_70px_rgba(31,45,80,0.12)] backdrop-blur-xl">
@@ -457,14 +563,17 @@ export default function MacFulfillmentApp() {
                   )}
                 </div>
 
-                {busy && progress.length > 0 && (
-                  <div className="rounded-[18px] border border-[#2563EB]/15 bg-[#EFF6FF] px-4 py-3 text-sm text-[#1D4ED8]">
-                    <div className="mb-2 font-semibold">Working...</div>
-                    <ol className="list-decimal space-y-1 pl-4">
-                      {progress.map((step) => (
-                        <li key={step}>{step}</li>
-                      ))}
-                    </ol>
+                {busy && workView && (
+                  <div className="rounded-[22px] border border-[#2563EB]/15 bg-[#EFF6FF] p-5 text-sm text-[#1D4ED8]">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-[#2563EB]">
+                        <div className="loader scale-75" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="working-copy text-base font-bold text-[#1E3A8A]">{workView.title}</div>
+                        <div className="mt-1 text-xs font-semibold leading-5 text-[#4264A8]">{workView.detail}</div>
+                      </div>
+                    </div>
                   </div>
                 )}
 

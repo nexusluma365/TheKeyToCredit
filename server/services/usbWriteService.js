@@ -82,6 +82,32 @@ async function verifyMacDiskImage(filePath) {
   await execFileAsync('hdiutil', ['verify', filePath]);
 }
 
+async function hardenCopiedInstaller(filePath) {
+  const hardening = {
+    chmodApplied: false,
+    quarantineCleared: os.platform() !== 'darwin',
+    xattrWarning: null,
+  };
+
+  try {
+    await fs.chmod(filePath, 0o644);
+    hardening.chmodApplied = true;
+  } catch (err) {
+    hardening.chmodWarning = err.message;
+  }
+
+  if (os.platform() !== 'darwin') return hardening;
+
+  try {
+    await execFileAsync('xattr', ['-c', filePath]);
+    hardening.quarantineCleared = true;
+  } catch (err) {
+    hardening.xattrWarning = err.message;
+  }
+
+  return hardening;
+}
+
 async function validateInstallerSource(installer, sourcePath) {
   const stat = await fs.stat(sourcePath);
   if (!stat.isFile() || stat.size <= 0) {
@@ -115,6 +141,8 @@ async function copyAndVerifyFile(sourcePath, destPath, installer) {
     );
   }
 
+  const hardening = await hardenCopiedInstaller(destPath);
+
   if (installer.destination === USB_FILES.macInstaller) {
     try {
       await verifyMacDiskImage(destPath);
@@ -126,6 +154,7 @@ async function copyAndVerifyFile(sourcePath, destPath, installer) {
   return {
     bytes: destStat.size,
     sha256: destHash,
+    hardening,
   };
 }
 
@@ -223,6 +252,11 @@ export async function writeStartHereTxt(usbMountPath) {
     '6. Keygen controls active, expired, suspended, and machine access.',
     '7. If the USB is removed, plug it back in to continue.',
     '8. Do not delete, rename, or edit files in the .credit-key folder.',
+    '',
+    'Mac security note:',
+    '- If macOS says the app is from an unidentified developer, Control-click the app and choose Open.',
+    '- If macOS still blocks it, open System Settings > Privacy & Security and choose Open Anyway.',
+    '- Keep this USB plugged in while opening and using the app.',
     '',
     'Need help? Contact support with your order information.',
   ];

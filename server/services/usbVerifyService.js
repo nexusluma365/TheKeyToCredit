@@ -44,12 +44,28 @@ async function isValidMacDiskImage(filePath) {
   }
 }
 
+async function hasAppleQuarantine(filePath) {
+  if (os.platform() !== 'darwin') return false;
+
+  try {
+    const { stdout } = await execFileAsync('xattr', [filePath]);
+    return stdout
+      .split('\n')
+      .map((line) => line.trim())
+      .some((name) => name === 'com.apple.quarantine');
+  } catch {
+    return false;
+  }
+}
+
 export async function verifyUsbContents(usbMountPath) {
   const checks = {
     windowsInstallerExists: false,
     windowsInstallerValid: false,
+    windowsInstallerQuarantineCleared: false,
     macInstallerExists: false,
     macInstallerValid: false,
+    macInstallerQuarantineCleared: false,
     startHereTxtExists: false,
     licenseDatExists: false,
     licenseDatValid: false,
@@ -76,11 +92,17 @@ export async function verifyUsbContents(usbMountPath) {
     checks.windowsInstallerExists &&
     await hasMinimumSize(windowsPath, 1024 * 1024) &&
     await isWindowsInstaller(windowsPath);
+  checks.windowsInstallerQuarantineCleared =
+    checks.windowsInstallerExists &&
+    !await hasAppleQuarantine(windowsPath);
 
   const macPath = path.join(usbMountPath, USB_FILES.macInstaller);
   checks.macInstallerValid =
     checks.macInstallerExists &&
     await isValidMacDiskImage(macPath);
+  checks.macInstallerQuarantineCleared =
+    checks.macInstallerExists &&
+    !await hasAppleQuarantine(macPath);
 
   const licensePath = path.join(usbMountPath, USB_FILES.license);
   try {
@@ -113,8 +135,10 @@ export async function verifyUsbContents(usbMountPath) {
   checks.structureCorrect =
     checks.windowsInstallerExists &&
     checks.windowsInstallerValid &&
+    checks.windowsInstallerQuarantineCleared &&
     checks.macInstallerExists &&
     checks.macInstallerValid &&
+    checks.macInstallerQuarantineCleared &&
     checks.startHereTxtExists &&
     checks.licenseDatExists &&
     checks.licenseDatValid &&

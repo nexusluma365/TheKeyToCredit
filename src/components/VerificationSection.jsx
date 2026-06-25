@@ -7,8 +7,10 @@ import { api } from '../services/api';
 const CHECK_LABELS = {
   windowsInstallerExists: 'CreditAnalyzer Setup.exe',
   windowsInstallerValid: 'Windows installer header valid',
+  windowsInstallerQuarantineCleared: 'Windows installer quarantine cleared',
   macInstallerExists: 'CreditAnalyzer.dmg',
   macInstallerValid: 'Mac disk image opens cleanly',
+  macInstallerQuarantineCleared: 'Mac installer quarantine cleared',
   startHereTxtExists: 'START-HERE.txt',
   licenseDatExists: '.credit-key/license.dat present',
   licenseDatValid: '.credit-key/license.dat contains valid key',

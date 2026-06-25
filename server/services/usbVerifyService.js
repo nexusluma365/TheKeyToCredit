@@ -1,11 +1,55 @@
 import fs from 'fs/promises';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
+import os from 'os';
 import { USB_FILES } from './usbWriteService.js';
+
+const execFileAsync = promisify(execFile);
+
+async function hasMinimumSize(filePath, minimumBytes) {
+  try {
+    const stat = await fs.stat(filePath);
+    return stat.isFile() && stat.size >= minimumBytes;
+  } catch {
+    return false;
+  }
+}
+
+async function isWindowsInstaller(filePath) {
+  try {
+    const handle = await fs.open(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(2);
+      await handle.read(buffer, 0, 2, 0);
+      return buffer.toString('ascii') === 'MZ';
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return false;
+  }
+}
+
+async function isValidMacDiskImage(filePath) {
+  if (os.platform() !== 'darwin') {
+    return hasMinimumSize(filePath, 1024 * 1024);
+  }
+
+  try {
+    await execFileAsync('hdiutil', ['verify', filePath]);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export async function verifyUsbContents(usbMountPath) {
   const checks = {
     windowsInstallerExists: false,
+    windowsInstallerValid: false,
     macInstallerExists: false,
+    macInstallerValid: false,
     startHereTxtExists: false,
     licenseDatExists: false,
     licenseDatValid: false,
@@ -26,6 +70,17 @@ export async function verifyUsbContents(usbMountPath) {
       checks[key] = false;
     }
   }
+
+  const windowsPath = path.join(usbMountPath, USB_FILES.windowsInstaller);
+  checks.windowsInstallerValid =
+    checks.windowsInstallerExists &&
+    await hasMinimumSize(windowsPath, 1024 * 1024) &&
+    await isWindowsInstaller(windowsPath);
+
+  const macPath = path.join(usbMountPath, USB_FILES.macInstaller);
+  checks.macInstallerValid =
+    checks.macInstallerExists &&
+    await isValidMacDiskImage(macPath);
 
   const licensePath = path.join(usbMountPath, USB_FILES.license);
   try {
@@ -57,7 +112,9 @@ export async function verifyUsbContents(usbMountPath) {
 
   checks.structureCorrect =
     checks.windowsInstallerExists &&
+    checks.windowsInstallerValid &&
     checks.macInstallerExists &&
+    checks.macInstallerValid &&
     checks.startHereTxtExists &&
     checks.licenseDatExists &&
     checks.licenseDatValid &&

@@ -397,6 +397,9 @@ export default function MacFulfillmentApp() {
       : 'USB not connected';
 
   const showRetryBanner = midWriteDisconnect && !busy && !usbSafetyAlert && !alertLeaving;
+  const activeStep = Math.min((workView?.activeIndex ?? 0) + 1, progress.length || 1);
+  const totalSteps = progress.length || 1;
+  const progressPercent = Math.round((activeStep / totalSteps) * 100);
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#EAF7FA] text-[#101723]">
@@ -460,29 +463,66 @@ export default function MacFulfillmentApp() {
             </button>
 
             {busy && workView && (
-              <div className="mt-8 w-full max-w-xl rounded-[28px] border border-white/70 bg-[#101827]/92 p-5 text-left text-white shadow-[0_24px_70px_rgba(15,23,42,0.28)] backdrop-blur-xl">
-                <div className="flex items-center gap-5">
+              <div className="mt-8 w-full max-w-2xl rounded-[24px] border border-[#C7D2FE] bg-white p-6 text-left text-[#101723] shadow-[0_24px_70px_rgba(15,23,42,0.22)]">
+                <div className="flex items-start gap-5">
                   <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl bg-[#2563EB] shadow-[inset_0_-2px_0_rgba(0,0,0,0.18),0_12px_24px_rgba(37,99,235,0.34)]">
                     <div className="loader" />
                   </div>
-                  <div className="min-w-0">
-                    <div className="text-xl font-bold leading-tight tracking-normal">
+                  <div className="min-w-0 flex-1">
+                    <div className="mb-2 inline-flex rounded-full bg-[#DBEAFE] px-3 py-1 text-xs font-bold uppercase tracking-normal text-[#1D4ED8]">
+                      Step {activeStep} of {totalSteps} · {progressPercent}% complete
+                    </div>
+                    <div className="text-2xl font-bold leading-tight tracking-normal text-[#080E18]">
                       {workView.title}
                     </div>
-                    <div className="mt-1 text-sm font-medium leading-6 text-white/90">
+                    <div className="mt-2 text-base font-semibold leading-7 text-[#374151]">
                       {workView.detail}
                     </div>
                   </div>
                 </div>
-                <div className="mt-5 flex gap-2">
+                <div className="mt-6 flex gap-2" aria-hidden="true">
                   {progress.map((stage, index) => (
                     <div
                       key={stage.title}
                       className={`h-1.5 flex-1 rounded-full transition ${
-                        index <= (workView.activeIndex || 0) ? 'bg-[#60A5FA]' : 'bg-white/16'
+                        index <= (workView.activeIndex || 0) ? 'bg-[#2563EB]' : 'bg-[#E5E7EB]'
                       }`}
                     />
                   ))}
+                </div>
+                <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                  {progress.map((stage, index) => {
+                    const complete = index < (workView.activeIndex || 0);
+                    const active = index === (workView.activeIndex || 0);
+                    return (
+                      <div
+                        key={stage.title}
+                        className={`flex items-start gap-2.5 rounded-2xl border px-3 py-2.5 ${
+                          active
+                            ? 'border-[#2563EB] bg-[#EFF6FF]'
+                            : complete
+                              ? 'border-[#BBF7D0] bg-[#F0FDF4]'
+                              : 'border-[#E5E7EB] bg-[#F9FAFB]'
+                        }`}
+                      >
+                        <div className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+                          active ? 'bg-[#2563EB]' : complete ? 'bg-[#16A34A]' : 'bg-[#CBD5E1]'
+                        }`} />
+                        <div className="min-w-0">
+                          <div className={`text-sm font-bold leading-5 ${
+                            active ? 'text-[#1D4ED8]' : complete ? 'text-[#166534]' : 'text-[#4B5563]'
+                          }`}>
+                            {stage.title}
+                          </div>
+                          {active && (
+                            <div className="mt-0.5 text-xs font-medium leading-5 text-[#475569]">
+                              {stage.detail}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

@@ -1,8 +1,10 @@
 import fs from 'fs/promises';
+import { createReadStream } from 'fs';
 import path from 'path';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import os from 'os';
+import crypto from 'crypto';
 
 const execFileAsync = promisify(execFile);
 
@@ -65,6 +67,68 @@ async function findInstallerSource(installersDir, candidates) {
   return null;
 }
 
+export async function sha256File(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+async function verifyMacDiskImage(filePath) {
+  if (os.platform() !== 'darwin') return;
+  await execFileAsync('hdiutil', ['verify', filePath]);
+}
+
+async function validateInstallerSource(installer, sourcePath) {
+  const stat = await fs.stat(sourcePath);
+  if (!stat.isFile() || stat.size <= 0) {
+    throw new Error(`Installer source is empty or invalid: ${sourcePath}`);
+  }
+
+  if (installer.destination === USB_FILES.macInstaller) {
+    try {
+      await verifyMacDiskImage(sourcePath);
+    } catch (err) {
+      throw new Error(`Mac installer source is not a valid disk image: ${sourcePath}. ${err.message}`);
+    }
+  }
+
+  return stat;
+}
+
+async function copyAndVerifyFile(sourcePath, destPath, installer) {
+  const sourceStat = await validateInstallerSource(installer, sourcePath);
+  const sourceHash = await sha256File(sourcePath);
+
+  await fs.copyFile(sourcePath, destPath);
+
+  const destStat = await fs.stat(destPath);
+  const destHash = await sha256File(destPath);
+
+  if (sourceStat.size !== destStat.size || sourceHash !== destHash) {
+    throw new Error(
+      `Installer copy verification failed for ${installer.destination}. ` +
+      `Source ${sourceStat.size} bytes/${sourceHash}; destination ${destStat.size} bytes/${destHash}.`
+    );
+  }
+
+  if (installer.destination === USB_FILES.macInstaller) {
+    try {
+      await verifyMacDiskImage(destPath);
+    } catch (err) {
+      throw new Error(`Copied Mac installer is not a valid disk image on the USB: ${destPath}. ${err.message}`);
+    }
+  }
+
+  return {
+    bytes: destStat.size,
+    sha256: destHash,
+  };
+}
+
 export async function assertUsbWritable(usbMountPath) {
   if (!usbMountPath) {
     const err = new Error('USB License Key Not Detected. Please plug in your Credit Analyzer USB to continue.');
@@ -104,9 +168,14 @@ export async function copyInstallers(installersDir, usbMountPath) {
     }
 
     const dest = path.join(usbMountPath, installer.destination);
-    await fs.copyFile(source.sourcePath, dest);
+    const verification = await copyAndVerifyFile(source.sourcePath, dest, installer);
     await assertUsbWritable(usbMountPath);
-    copied.push({ source: source.filename, destination: installer.destination });
+    copied.push({
+      source: source.filename,
+      sourcePath: source.sourcePath,
+      destination: installer.destination,
+      ...verification,
+    });
   }
 
   return copied;

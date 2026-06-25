@@ -61,10 +61,10 @@ automatically configure this local Mac fulfillment app.
 
 ## Required Installer Files
 
-Put production installers in `installers/` before building:
+Put production release installers in `installers/` before building:
 
-- `CreditAnalyzer-Windows.exe`
-- `CreditAnalyzer-Mac.dmg`
+- `CreditAnalyzer Setup.exe`
+- `CreditAnalyzer.dmg`
 
 Packaged builds include the contents of `installers/` as app resources.
 
@@ -75,21 +75,21 @@ The one-button flow:
 1. Uses the selected customer.
 2. Requires exactly one mounted removable USB drive.
 3. Creates a fresh Keygen license.
-4. Copies `CreditAnalyzer-Windows.exe` and `CreditAnalyzer-Mac.dmg` to the USB.
-5. Writes `license.json`.
-6. Writes `START-HERE.pdf`.
+4. Copies `CreditAnalyzer Setup.exe` and `CreditAnalyzer.dmg` to the USB.
+5. Writes `.credit-key/license.dat`.
+6. Writes `START-HERE.txt`.
 7. Records the fulfillment locally.
 
 Each prepared USB should contain only:
 
 ```text
-CreditAnalyzer-Windows.exe
-CreditAnalyzer-Mac.dmg
-license.json
-START-HERE.pdf
+CreditAnalyzer Setup.exe
+CreditAnalyzer.dmg
+.credit-key/license.dat
+START-HERE.txt
 ```
 
-`license.json` is written as:
+`.credit-key/license.dat` is written as:
 
 ```json
 {

@@ -90,12 +90,15 @@ credentials as the permanent login.
 
 ### 3. Add production installers
 
-Place these two files in `/installers`:
+Place these two production release files in `/installers`:
 
-- `CreditAnalyzer-Windows.exe`
-- `CreditAnalyzer-Mac.dmg`
+- `CreditAnalyzer Setup.exe`
+- `CreditAnalyzer.dmg`
 
-Run `npm run usb:prepare` to confirm both are present.
+Older alternate names are still accepted for compatibility, but these release
+filenames are preferred and will be selected first.
+
+Run `npm run usb:prepare` to confirm both are present, valid, and selected.
 
 ### 4. Run it
 
